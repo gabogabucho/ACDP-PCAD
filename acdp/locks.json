@@ -5,10 +5,10 @@
       "agent_id": "local-agent",
       "scope": "file",
       "acquired_at": "2026-04-10T21:42:23.463Z",
-      "expires_at": "2026-04-10T21:47:23.463Z",
+      "expires_at": "2026-04-10T21:49:22.328Z",
       "reason": "Phase 2 verification",
       "lock_id": "local-agent-mntflzva-vpwrgi",
-      "base_coord_rev": "681e2977da3fdb6cd625719c955787bb616f3fc3",
+      "base_coord_rev": "a86db591fb22b50ea4ad29f29cc773fb47f05c6a",
       "branch": "main"
     }
   ]
