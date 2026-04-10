@@ -1,15 +1,3 @@
 {
-  "locks": [
-    {
-      "resource": "meta/phase2-cleanup-verify-20260410184429.md",
-      "agent_id": "local-agent",
-      "scope": "file",
-      "acquired_at": "2026-04-10T21:34:31.313Z",
-      "expires_at": "2026-04-10T21:35:31.313Z",
-      "reason": "Phase 2 cleanup verification",
-      "lock_id": "verify-cleanup-mntfoqj5",
-      "base_coord_rev": "708f39684e84883d390eeb7d39be670419560b52",
-      "branch": "main"
-    }
-  ]
+  "locks": []
 }
