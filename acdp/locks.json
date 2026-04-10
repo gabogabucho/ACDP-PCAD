@@ -1,15 +1,3 @@
 {
-  "locks": [
-    {
-      "resource": "meta/phase2-lockid-verify-20260410184529.md",
-      "agent_id": "local-agent",
-      "scope": "file",
-      "acquired_at": "2026-04-10T21:45:32.360Z",
-      "expires_at": "2026-04-10T21:51:45.198Z",
-      "reason": "Phase 2 lock-id verification",
-      "lock_id": "local-agent-mntfq1mt-lju5y9",
-      "base_coord_rev": "f02ccc2278f62121dca4025ddc4a6156266d913b",
-      "branch": "main"
-    }
-  ]
+  "locks": []
 }
