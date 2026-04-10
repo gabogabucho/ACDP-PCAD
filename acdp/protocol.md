@@ -1,6 +1,6 @@
 # ACDP — Agent Coordination Protocol for Development
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Status:** Active
 
 ## Overview
@@ -14,34 +14,48 @@ ACDP is a lightweight, file-based coordination protocol for multiple AI agents (
 3. **Locks prevent conflicts** — only one agent may hold a write lock on a resource at a time.
 4. **Events are append-only** — the event log is a permanent, ordered record of all actions.
 5. **Governance is explicit** — rules for overrides, escalation, and agent management are codified.
+6. **Pull before push** — always pull latest state before modifying any ACDP file.
 
 ---
 
 ## 1. Agent Registration
 
-Before an agent can participate, it must be registered.
+Before an agent can participate, it must be registered and approved.
 
 ### Process
 
-1. The agent submits a registration request by appending an entry to `agents.registry.json`.
-2. A maintainer (defined in `governance.json`) reviews and approves the registration.
-3. Upon approval, the agent is added to `agents.md` with status `idle`.
-4. A `register` message is appended to `events.log`.
+1. The agent adds an entry to `agents.registry.json` with `status: "pending"`.
+2. The agent appends a `register` message to `events.log`.
+3. A maintainer (defined in `governance.json`) reviews the entry.
+4. The maintainer sets `status` to `"approved"` or `"rejected"` in `agents.registry.json`.
+5. If approved, the agent is added to `agents.md` with status `idle`.
+6. The maintainer appends a `notify` message to `events.log` confirming the decision.
 
-### Required Fields
+### Approval Rules
 
-| Field        | Type   | Description                           |
-|--------------|--------|---------------------------------------|
-| `id`         | string | Unique agent identifier (kebab-case)  |
-| `role`       | string | One of: `developer`, `reviewer`, `ops`, `architect` |
-| `public_key` | string | Agent's public key for identity verification |
-| `permissions`| array  | List of allowed actions                |
+- Registration requires approval from a maintainer (see `governance.json`).
+- Roles listed in `governance.json` → `auto_approve_roles` skip manual approval.
+- The maximum number of active agents is defined in `governance.json` → `max_active_agents`. If the limit is reached, new registrations are rejected until an agent is deregistered.
+- An agent with `status: "pending"` MUST NOT declare intent, acquire locks, or modify code.
+- An agent with `status: "rejected"` is ignored by the system.
+
+### Required Fields (agents.registry.json)
+
+| Field           | Type   | Description                              |
+|-----------------|--------|------------------------------------------|
+| `id`            | string | Unique agent identifier (kebab-case)     |
+| `role`          | string | One of: `developer`, `reviewer`, `ops`, `architect` |
+| `public_key`    | string | Agent's public key for identity verification |
+| `permissions`   | array  | List of allowed actions                  |
+| `status`        | string | One of: `pending`, `approved`, `rejected` |
+| `registered_at` | string | ISO 8601 timestamp                       |
+| `approved_by`   | string | ID of the maintainer who approved (null if pending) |
 
 ---
 
 ## 2. Intent Declaration
 
-Before working on any task, an agent MUST declare intent.
+Before working on any task, an approved agent MUST declare intent.
 
 ### Process
 
@@ -54,6 +68,7 @@ Before working on any task, an agent MUST declare intent.
 - An agent may only declare intent on one task at a time.
 - Intent does NOT grant exclusive access. A lock is required for that.
 - If two agents declare intent on overlapping resources, the first to acquire a lock wins.
+- Only agents with `status: "approved"` in `agents.registry.json` may declare intent.
 
 ---
 
@@ -63,29 +78,31 @@ Locks grant exclusive write access to a resource (file, module, or directory).
 
 ### Acquiring a Lock
 
-1. Check `locks.json` — if the resource is already locked by another agent, the request is denied.
-2. If the resource is free, add an entry to `locks.json` with:
+1. **Pull latest** — before checking lock state, pull the latest version of `locks.json`.
+2. Check `locks.json` — if the resource is already locked by another agent, the request is denied.
+3. Verify the agent has not exceeded `max_locks_per_agent` (defined in `governance.json` → `lock_defaults`).
+4. If the resource is free, add an entry to `locks.json` with:
    - `resource`: path or module name
    - `agent_id`: requesting agent
    - `scope`: `file` or `directory` (see Lock Hierarchy below)
    - `acquired_at`: ISO 8601 timestamp
-   - `expires_at`: ISO 8601 timestamp (default TTL: 30 minutes)
+   - `expires_at`: ISO 8601 timestamp (default TTL from `governance.json` → `lock_defaults.ttl_minutes`)
    - `reason`: brief description of why the lock is needed
-3. Append a `lock` message to `events.log`.
-4. Commit the changes.
+5. Append a `lock` message to `events.log`.
+6. Commit and push the changes.
 
 ### Releasing a Lock
 
 1. Remove the lock entry from `locks.json`.
 2. Append a `release` message to `events.log`.
-3. Commit the changes.
+3. Commit and push the changes.
 
-### Rules
+### Lock Expiration
 
 - Locks have a TTL (time-to-live). Expired locks are considered released.
-- An agent MUST release its lock before declaring a new intent on a different resource.
-- A maintainer may force-release a lock (see Governance).
-- An agent may renew its own lock before expiration by updating `expires_at`.
+- The maximum TTL is defined in `governance.json` → `lock_defaults.max_ttl_minutes`.
+- **Any agent** that detects an expired lock while reading `locks.json` MAY remove it and append a `release` message with `"expired": true` in the data field. This does not require being the lock owner.
+- An agent may renew its own lock before expiration by updating `expires_at` in `locks.json` and appending a `lock` message with `"renewal": true` in the data field.
 
 ### Lock Hierarchy
 
@@ -133,6 +150,14 @@ Each line in `events.log` is a valid JSON object:
 - The `data` field contains type-specific payload.
 - See section 8 (Agent Communication Protocol) for the full message type catalog.
 
+### Concurrent Append Resolution
+
+If two agents push changes to `events.log` simultaneously and a merge conflict occurs:
+
+1. **Both appends are valid.** Since events.log is append-only, both new lines should be kept.
+2. The agent whose push was rejected MUST pull, resolve the conflict by keeping ALL lines (ordering by timestamp), and push again.
+3. This is the ONLY file where merge conflicts are resolved by accepting all changes.
+
 ---
 
 ## 5. Conflict Handling
@@ -142,8 +167,20 @@ Each line in `events.log` is a valid JSON object:
 - Always acquire a lock before modifying shared resources.
 - Declare intent early to signal other agents.
 - Work on feature branches, not directly on `main`.
+- **Pull before push** — always pull the latest ACDP state before pushing changes to any ACDP file.
 
-### Detection
+### ACDP File Conflict Resolution
+
+If a merge conflict occurs on an ACDP file (not project code):
+
+| File              | Resolution Strategy                                |
+|-------------------|----------------------------------------------------|
+| `events.log`      | Keep ALL lines from both sides, order by timestamp |
+| `locks.json`      | Conflict on same resource → oldest `acquired_at` wins. Different resources → keep both. |
+| `agents.md`       | Keep both agent updates                            |
+| `state.md`        | Regenerate from `events.log` + `locks.json` + `agents.md` |
+
+### Project Code Conflicts
 
 - Before merging, check `locks.json` for active locks on affected files.
 - If a merge conflict occurs, append a `block` message to `events.log`.
@@ -152,13 +189,77 @@ Each line in `events.log` is a valid JSON object:
 
 1. The agent with the active lock has priority.
 2. If both agents have locks on different files within the same module, they must coordinate via `events.log` using `request` and `ack` messages.
-3. If resolution fails, escalate to a maintainer (defined in `governance.json`).
-4. The maintainer may force-release locks and assign resolution priority.
-5. Once resolved, append a `resolve` message to `events.log`.
+3. If a `request` receives `ack` with `accepted: false`, the requesting agent must: (a) wait and retry, (b) send another `request` with more context, or (c) escalate to a maintainer. Maximum 3 retries before escalation is mandatory.
+4. If resolution fails, escalate to a maintainer (defined in `governance.json` → `conflict_resolution.escalation_chain`).
+5. The maintainer may force-release locks and assign resolution priority. After a lock override, a cooldown period applies (defined in `governance.json` → `lock_override.cooldown_minutes`).
+6. Total resolution time must not exceed `governance.json` → `conflict_resolution.max_resolution_time_minutes`.
+7. Once resolved, append a `resolve` message to `events.log`.
 
 ---
 
-## 6. Branch Convention
+## 6. Agent Offline Detection
+
+### Detection
+
+An agent is considered offline if it has not appended ANY message to `events.log` for a period greater than **2× the TTL of its longest active lock**.
+
+### Process
+
+1. A maintainer appends a `notify` message with `severity: "warning"` identifying the unresponsive agent.
+2. If the agent does not respond within the cooldown period (`governance.json` → `lock_override.cooldown_minutes`), the maintainer may:
+   - Force-release all locks held by the offline agent.
+   - Set the agent's status to `offline` in `agents.md`.
+   - Append a `release` message for each freed lock with `"override": true` in the data field.
+
+### Recovery
+
+When an offline agent comes back:
+
+1. It MUST read the current state before doing anything.
+2. If its locks were released, it must re-declare intent and re-acquire locks.
+3. It sets its status back to `idle` in `agents.md`.
+
+---
+
+## 7. State File Ownership
+
+### Source of Truth Hierarchy
+
+ACDP maintains several files with overlapping information. In case of conflict, this is the priority order:
+
+| Priority | File                   | Authority                    |
+|----------|------------------------|------------------------------|
+| 1        | `events.log`           | Immutable record of all actions |
+| 2        | `locks.json`           | Current lock state           |
+| 3        | `agents.registry.json` | Agent identity and approval  |
+| 4        | `agents.md`            | Agent operational status     |
+| 5        | `state.md`             | Human-readable summary (DERIVED) |
+
+### state.md
+
+`state.md` is a **derived file** — a human-readable summary for convenience. It is NOT authoritative.
+
+- Each agent SHOULD update `state.md` when completing a cycle (intent → lock → work → release → complete).
+- If `state.md` conflicts with `events.log`, `locks.json`, or `agents.md`, the other files take priority.
+- `state.md` can always be regenerated from the authoritative files.
+
+### agents.md vs agents.registry.json
+
+These files serve different purposes and MUST NOT contradict each other:
+
+| Field   | Authoritative Source     |
+|---------|--------------------------|
+| `id`    | `agents.registry.json`   |
+| `role`  | `agents.registry.json`   |
+| `status`| `agents.md` (operational) / `agents.registry.json` (approval) |
+| `task`  | `agents.md`              |
+| `branch`| `agents.md`              |
+| `permissions` | `agents.registry.json` |
+| `public_key`  | `agents.registry.json` |
+
+---
+
+## 8. Branch Convention
 
 | Branch Pattern            | Purpose                   |
 |---------------------------|---------------------------|
@@ -168,7 +269,7 @@ Each line in `events.log` is a valid JSON object:
 
 ---
 
-## 7. Commit Convention
+## 9. Commit Convention
 
 Agents must use conventional commits with an agent tag:
 
@@ -184,7 +285,7 @@ feat(auth): add JWT refresh endpoint [agent:agent-alpha]
 
 ---
 
-## 8. Agent Communication Protocol
+## 10. Agent Communication Protocol
 
 All coordination between agents happens through structured JSON messages appended to `events.log`.
 
@@ -205,8 +306,8 @@ Every message MUST include these fields:
 |------------|--------------------------------------------------|--------------------------------------------|
 | `register` | Agent announces its presence                     | `role`, `public_key`                       |
 | `intent`   | Agent declares what it will work on              | `task`, `branch`, `resources`              |
-| `lock`     | Agent acquires exclusive access to a resource    | `resource`, `reason`, `ttl_minutes`        |
-| `release`  | Agent releases a previously held lock            | `resource`                                 |
+| `lock`     | Agent acquires exclusive access to a resource    | `resource`, `scope`, `reason`, `ttl_minutes` |
+| `release`  | Agent releases a previously held lock            | `resource`, `expired`, `override`          |
 | `update`   | Agent reports progress on current task           | `task`, `progress`, `details`              |
 | `complete` | Agent declares a task finished                   | `task`, `branch`, `summary`                |
 | `wait`     | Agent signals it is blocked waiting for a lock   | `resource`, `held_by`                      |
@@ -230,7 +331,12 @@ Every message MUST include these fields:
 
 **Lock:**
 ```json
-{"type":"lock","agent":"agent-alpha","timestamp":"2026-04-10T00:15:00-03:00","data":{"resource":"src/frontend/pages/","reason":"Building dashboard views","ttl_minutes":30}}
+{"type":"lock","agent":"agent-alpha","timestamp":"2026-04-10T00:15:00-03:00","data":{"resource":"src/frontend/pages/","scope":"directory","reason":"Building dashboard views","ttl_minutes":30}}
+```
+
+**Release (expired):**
+```json
+{"type":"release","agent":"agent-beta","timestamp":"2026-04-10T01:00:00-03:00","data":{"resource":"src/frontend/pages/","expired":true}}
 ```
 
 **Wait:**
@@ -256,6 +362,18 @@ Every message MUST include these fields:
 4. `release` MUST follow task completion or before declaring a new intent.
 5. `ack` SHOULD reference the original message using `agent:type:timestamp` format.
 6. `block` and `resolve` always come in pairs — every block must eventually be resolved.
+
+### Request/Ack Flow
+
+When an agent sends a `request`:
+
+1. The target agent SHOULD respond with `ack` within a reasonable time.
+2. If `accepted: true` — the target agent commits to the requested action.
+3. If `accepted: false` — the requesting agent may:
+   - Wait and retry (send another `request`).
+   - Provide additional context in a new `request`.
+   - Escalate to a maintainer after **3 failed attempts**.
+4. If no `ack` is received after 2× the target agent's lock TTL, the request is considered ignored and the requesting agent may escalate directly.
 
 ### Design Constraints
 

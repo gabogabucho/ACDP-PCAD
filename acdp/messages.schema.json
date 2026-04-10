@@ -78,7 +78,8 @@
               "resource": { "type": "string" },
               "scope": { "type": "string", "enum": ["file", "directory"], "description": "Lock granularity. Defaults to file for paths with extensions, directory for paths ending in /" },
               "reason": { "type": "string" },
-              "ttl_minutes": { "type": "integer", "minimum": 1, "maximum": 120 }
+              "ttl_minutes": { "type": "integer", "minimum": 1, "maximum": 120 },
+              "renewal": { "type": "boolean", "description": "True if this is a lock renewal, not a new acquisition" }
             }
           }
         }
@@ -91,7 +92,9 @@
           "data": {
             "required": ["resource"],
             "properties": {
-              "resource": { "type": "string" }
+              "resource": { "type": "string" },
+              "expired": { "type": "boolean", "description": "True if lock was released due to TTL expiration" },
+              "override": { "type": "boolean", "description": "True if lock was force-released by a maintainer" }
             }
           }
         }
