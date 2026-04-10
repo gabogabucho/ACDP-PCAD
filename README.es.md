@@ -105,6 +105,7 @@ ACDP se implementa dentro del repositorio mediante una estructura estándar:
     join-project.md      # Prompt para que un agente se una al proyecto
   examples/
     simulation-php.md    # Simulación completa con 3 agentes
+    simulation-stress-test.md # Simulación realista de fallas
 ```
 
 ---
@@ -218,12 +219,10 @@ Usá [`acdp/prompts/join-project.md`](acdp/prompts/join-project.md) — le da a 
 
 ## Simulación
 
-Ver [`acdp/examples/simulation-php.md`](acdp/examples/simulation-php.md) para un recorrido completo de 3 agentes (2 IAs + 1 humano) construyendo un sitio PHP, incluyendo:
+ACDP provee dos simulaciones narrativas para demostrar cómo el protocolo maneja el trabajo en paralelo:
 
-* Trabajo paralelo sin conflictos
-* Un conflicto de lock resuelto mediante mensajes request/ack/notify
-* Un archivo de configuración compartido gestionado sin merge conflicts
-* El `events.log` completo (23 mensajes)
+* [`acdp/examples/simulation-php.md`](acdp/examples/simulation-php.md) — El **Camino Feliz**: 3 agentes construyendo un sitio PHP, resolviendo conflictos menores elegantemente.
+* [`acdp/examples/simulation-stress-test.md`](acdp/examples/simulation-stress-test.md) — El **Stress Test**: Un escenario realista y caótico donde ocurren deadlocks, agentes "crashean" reteniendo locks, y conflictos de escritura simultánea en git. Demuestra los mecanismos de protección del protocolo y la intervención humana.
 
 ---
 
