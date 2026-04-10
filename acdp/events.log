@@ -10,3 +10,5 @@
 {"type":"ack","agent":"agent-alpha","timestamp":"2026-04-10T00:26:00-03:00","data":{"reference":"agent-beta:request:2026-04-10T00:25:00-03:00","accepted":true}}
 {"type":"release","agent":"agent-alpha","timestamp":"2026-04-10T00:27:00-03:00","data":{"resource":"src/api/routes/auth.ts"}}
 {"type":"notify","agent":"agent-alpha","timestamp":"2026-04-10T00:27:30-03:00","data":{"message":"Released auth.ts lock — agent-beta can proceed with api/routes/","severity":"info"}}
+{"type":"intent","agent":"local-agent","timestamp":"2026-04-10T21:26:24.901Z","data":{"task":"Bootstrap remote coordination branch","branch":"main","resources":["meta/remote-phase1-bootstrap.md"],"base_coord_rev":"d5e9be5b7503e543f4ecd29503c6da5e596c53b0"}}
+{"type":"lock","agent":"local-agent","timestamp":"2026-04-10T21:26:24.923Z","data":{"resource":"meta/remote-phase1-bootstrap.md","scope":"file","reason":"Bootstrap remote coordination branch","ttl_minutes":10,"branch":"main","lock_id":"local-agent-mntf1g90-lfa4qc","base_coord_rev":"d5e9be5b7503e543f4ecd29503c6da5e596c53b0"}}
