@@ -1,0 +1,18 @@
+{
+  "locks": [
+    {
+      "resource": "src/frontend/pages/",
+      "agent_id": "agent-alpha",
+      "acquired_at": "2026-04-10T00:15:00-03:00",
+      "expires_at": "2026-04-10T00:45:00-03:00",
+      "reason": "Building user dashboard views"
+    },
+    {
+      "resource": "src/api/routes/auth.ts",
+      "agent_id": "agent-alpha",
+      "acquired_at": "2026-04-10T00:20:00-03:00",
+      "expires_at": "2026-04-10T00:50:00-03:00",
+      "reason": "Integrating auth flow into dashboard"
+    }
+  ]
+}

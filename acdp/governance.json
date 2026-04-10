@@ -1,0 +1,39 @@
+{
+  "project": {
+    "name": "PCAD",
+    "owner": "project-owner"
+  },
+  "maintainers": [
+    "project-owner"
+  ],
+  "rules": {
+    "agent_registration": {
+      "requires_approval_from": "maintainer",
+      "max_active_agents": 5,
+      "auto_approve_roles": []
+    },
+    "protocol_modification": {
+      "requires_approval_from": "owner",
+      "protected_files": [
+        "acdp/protocol.md",
+        "acdp/governance.json",
+        "acdp/architecture.md"
+      ]
+    },
+    "lock_override": {
+      "allowed_by": ["owner", "maintainer"],
+      "requires_reason": true,
+      "must_log_event": true,
+      "cooldown_minutes": 5
+    },
+    "conflict_resolution": {
+      "escalation_chain": ["maintainer", "owner"],
+      "max_resolution_time_minutes": 60
+    }
+  },
+  "lock_defaults": {
+    "ttl_minutes": 30,
+    "max_ttl_minutes": 120,
+    "max_locks_per_agent": 3
+  }
+}
