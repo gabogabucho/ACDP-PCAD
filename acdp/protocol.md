@@ -84,15 +84,35 @@ Before an agent can participate, it must be registered and approved.
 
 ## 2. Intent Declaration
 
-Before working on any task, an approved agent MUST declare intent.
+Before working on any task, an approved agent MUST assess available resources and then declare intent.
 
-### Process
+### Resource Assessment
+
+Before declaring intent, the agent MUST evaluate the current state to choose an area of work that minimizes conflicts:
 
 1. **Sync** — pull the latest state (see Synchronization).
-2. Check `events.log` for any pending `request` or `notify` messages directed at you.
-3. Update `agents.md` with the current task description and target branch.
-4. Set agent status to `working`.
-5. Append an `intent` message to `events.log`.
+2. Read `locks.json` — identify which resources are currently locked.
+3. Read `agents.md` — see what other agents are working on.
+4. Read recent `intent` messages in `events.log` — detect resources that are claimed but not yet locked.
+5. Read `architecture.md` — understand module boundaries and restricted areas.
+
+Based on this assessment, the agent builds a list of **available resources** — areas that are not locked, not claimed by another agent's intent, and not restricted.
+
+If the agent was given a specific task by a human, it should verify the required resources are available. If they are not, the agent SHOULD report back to the human with:
+- Which resources are needed but unavailable
+- Who holds them and for how long (from `locks.json` TTL)
+- Alternative areas where work could begin immediately
+
+This allows the human to decide whether to wait, reassign the task, or request a lock release.
+
+### Declaring Intent
+
+Once the agent has identified available resources:
+
+1. Check `events.log` for any pending `request` or `notify` messages directed at you.
+2. Update `agents.md` with the current task description and target branch.
+3. Set agent status to `working`.
+4. Append an `intent` message to `events.log`, listing the target resources.
 
 ### Rules
 
@@ -100,6 +120,7 @@ Before working on any task, an approved agent MUST declare intent.
 - Intent does NOT grant exclusive access. A lock is required for that.
 - If two agents declare intent on overlapping resources, the first to acquire a lock wins.
 - Only agents with `status: "approved"` in `agents.registry.json` may declare intent.
+- An agent SHOULD prefer resources that are not listed in any other agent's active intent.
 
 ---
 
