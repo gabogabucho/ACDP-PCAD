@@ -1,0 +1,117 @@
+#!/usr/bin/env node
+const fs = require('fs');
+const path = require('path');
+const { execSync } = require('child_process');
+
+function getRepoRoot() {
+  try {
+    return execSync('git rev-parse --show-toplevel', {
+      stdio: ['ignore', 'pipe', 'ignore']
+    }).toString().trim();
+  } catch (error) {
+    return process.cwd();
+  }
+}
+
+function readJson(filePath) {
+  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+}
+
+function validateLocksFile(filePath, errors) {
+  let content;
+
+  try {
+    content = readJson(filePath);
+  } catch (error) {
+    errors.push('acdp/locks.json is not valid JSON.');
+    return;
+  }
+
+  if (!content || typeof content !== 'object' || Array.isArray(content) || !Array.isArray(content.locks)) {
+    errors.push("acdp/locks.json must use the canonical shape { \"locks\": [...] }.");
+    return;
+  }
+
+  content.locks.forEach((lock, index) => {
+    ['resource', 'agent_id', 'scope', 'acquired_at', 'expires_at', 'reason'].forEach(field => {
+      if (!lock || typeof lock[field] !== 'string' || !lock[field]) {
+        errors.push(`acdp/locks.json lock #${index + 1} is missing '${field}'.`);
+      }
+    });
+  });
+
+  const now = Date.now();
+  const activeLocks = content.locks.filter(lock => {
+    const expiresAt = Date.parse(lock.expires_at);
+    return !Number.isNaN(expiresAt) && expiresAt > now;
+  });
+
+  if (activeLocks.length > 0) {
+    errors.push(`Commit blocked: ${activeLocks.length} active lock(s) still exist in acdp/locks.json.`);
+  }
+}
+
+function validateEventsLog(filePath, schemaPath, errors) {
+  let schema;
+
+  try {
+    schema = readJson(schemaPath);
+  } catch (error) {
+    errors.push('acdp/messages.schema.json is not valid JSON.');
+    return;
+  }
+
+  const validTypes = new Set(schema.properties.type.enum || []);
+  const lines = fs.readFileSync(filePath, 'utf8').split(/\r?\n/).filter(Boolean);
+
+  lines.forEach((line, index) => {
+    let event;
+
+    try {
+      event = JSON.parse(line);
+    } catch (error) {
+      errors.push(`acdp/events.log line ${index + 1} is not valid JSON.`);
+      return;
+    }
+
+    if (!event.type || !event.agent || !event.timestamp) {
+      errors.push(`acdp/events.log line ${index + 1} must include type, agent, and timestamp.`);
+    }
+
+    if ('agent_id' in event || 'payload' in event) {
+      errors.push(`acdp/events.log line ${index + 1} uses legacy agent_id/payload fields.`);
+    }
+
+    if (!('data' in event) || typeof event.data !== 'object' || event.data === null || Array.isArray(event.data)) {
+      errors.push(`acdp/events.log line ${index + 1} must contain an object data field.`);
+    }
+
+    if (event.type && !validTypes.has(event.type)) {
+      errors.push(`acdp/events.log line ${index + 1} has unsupported type '${event.type}'.`);
+    }
+  });
+}
+
+function main() {
+  const repoRoot = getRepoRoot();
+  const locksPath = path.join(repoRoot, 'acdp', 'locks.json');
+  const eventsPath = path.join(repoRoot, 'acdp', 'events.log');
+  const schemaPath = path.join(repoRoot, 'acdp', 'messages.schema.json');
+  const errors = [];
+
+  if (fs.existsSync(locksPath)) {
+    validateLocksFile(locksPath, errors);
+  }
+
+  if (fs.existsSync(eventsPath) && fs.existsSync(schemaPath)) {
+    validateEventsLog(eventsPath, schemaPath, errors);
+  }
+
+  if (errors.length > 0) {
+    console.error('[ACDP] Protocol guard failed:');
+    errors.forEach(error => console.error(` - ${error}`));
+    process.exit(1);
+  }
+}
+
+main();

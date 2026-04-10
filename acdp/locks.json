@@ -1,12 +1,3 @@
 {
-  "locks": [
-    {
-      "resource": "src/frontend/pages/",
-      "agent_id": "agent-alpha",
-      "scope": "directory",
-      "acquired_at": "2026-04-10T00:15:00-03:00",
-      "expires_at": "2026-04-10T00:45:00-03:00",
-      "reason": "Building user dashboard views"
-    }
-  ]
+  "locks": []
 }

@@ -36,7 +36,9 @@ Before writing ANY code, you MUST follow this onboarding sequence:
 
 5. **Acquire locks BEFORE modifying files**:
    - Run `node acdp/cli.js status` to check if your resource is free. If requested resource is locked, DO NOT proceed.
-   - Execute `node acdp/cli.js lock <resource> <scope> "<reason>"`. DO NOT edit JSON files manually to prevent token bloat.
+   - Execute `node acdp/cli.js lock <resource> <scope> "<reason>" [ttlMinutes]`.
+   - DO NOT edit `acdp/locks.json` manually. Lock acquisition, renewal, release, and expired-lock cleanup must go through the CLI so the protocol state stays schema-compliant.
+   - If `status` shows expired locks blocking your work, execute `node acdp/cli.js cleanup` before continuing.
    - If you need a resource held by another agent, send a `request` message and wait for their `ack`.
 
 6. **Work on your task**:
@@ -58,6 +60,7 @@ Before writing ANY code, you MUST follow this onboarding sequence:
 CRITICAL RULES:
 - NEVER skip registration. Unregistered agents are ignored.
 - NEVER modify a resource without holding its lock.
+- NEVER hand-edit `acdp/locks.json` for normal lock lifecycle operations; always use the CLI.
 - NEVER modify `acdp/protocol.md` or `acdp/governance.json` — these require owner approval.
 - Check `acdp/events.log` regularly for `request` and `notify` messages directed at you.
 - Respect lock hierarchy: a directory lock blocks all files within it.

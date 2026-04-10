@@ -204,17 +204,46 @@ Unrecognized agents can be ignored by the system.
 
 ## 🛠️ ACDP CLI Automation
 
-To avoid token bloat and prevent manual JSON tampering mistakes, ACDP ships with a built-in CLI utility (`acdp/cli.js`). 
+To avoid token bloat and prevent manual JSON tampering mistakes, ACDP ships with a built-in CLI utility (`acdp/cli.js`).
 
-Agents can execute log operations natively:
-- `node acdp/cli.js lock "/src/file.js" "exclusive" "Implementing feature"`
-- `node acdp/cli.js release "/src/file.js" "Feature complete"`
+**Lock operations must go through the CLI.** Do not hand-edit `acdp/locks.json` or append ad-hoc JSON to `acdp/events.log` for normal lock lifecycle operations.
+
+Agents can execute protocol-safe operations natively:
+- `node acdp/cli.js lock "src/file.js" file "Implementing feature" 30`
+- `node acdp/cli.js release "src/file.js" "Feature complete"`
 - `node acdp/cli.js status`
-- `node acdp/cli.js finish` (Globally declares the project explicitly finished).
-- `node acdp/cli.js watch` (Spawns a real-time TUI terminal radar to spectate agent events without web-servers).
+- `node acdp/cli.js cleanup` (Removes expired locks and emits schema-compliant `release` events with `data.expired: true`.)
+- `node acdp/cli.js batch "refresh-cache" "src/cache/data.json" 5 file` (For short scripted intent → lock → release flows.)
+- `node acdp/cli.js finish` (Globally declares the project explicitly finished.)
+- `node acdp/cli.js watch` (Spawns a real-time terminal radar and shows lock TTL context when relevant.)
+- `node acdp/export-logs.js` (Exports `events.log` to a gzip archive under `acdp/log-exports/`, which is ignored by Git.)
+
+The CLI keeps protocol artifacts aligned with the documented format:
+- `acdp/locks.json` uses the canonical object shape `{ "locks": [...] }`
+- `acdp/events.log` entries use `{ type, agent, timestamp, data }` JSONL records compatible with `acdp/messages.schema.json`
 
 **Definition of DONE (Exit Clause):**
 When the project's `state.md` is marked with `Status: DONE` (enforced natively via `node acdp/cli.js finish`), all participating agents MUST immediately cease operations, abandon internal task-seeking loops, and formally log off. Ongoing automated tasks should be aborted.
+
+---
+
+## 🔒 Versioned Commit Guard
+
+ACDP includes a versioned pre-commit guard at `scripts/git-hooks/pre-commit`.
+
+What it checks:
+- commits are blocked when `acdp/locks.json` still contains active locks
+- `acdp/locks.json` keeps the canonical `{ "locks": [...] }` shape
+- `acdp/events.log` remains valid JSONL and uses `agent/data`, not legacy `agent_id/payload`
+- event types stay aligned with `acdp/messages.schema.json`
+
+Suggested installation:
+
+```bash
+git config core.hooksPath scripts/git-hooks
+```
+
+If you do not want to change `core.hooksPath`, you can also copy the file into `.git/hooks/pre-commit` manually. On Unix-like systems, ensure it is executable.
 
 ---
 
