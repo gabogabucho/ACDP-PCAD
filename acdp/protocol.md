@@ -47,6 +47,47 @@ An agent that acts on stale state is responsible for any conflicts that result. 
 
 ---
 
+## 0. Project Initialization
+
+Before any agent can participate, the project must have its coordination structure defined. This is typically done by the project owner or the first agent.
+
+### Required Files
+
+The following ACDP files MUST exist before agents can register:
+
+| File                   | Purpose                                       | Created By     |
+|------------------------|-----------------------------------------------|----------------|
+| `acdp/protocol.md`    | This document — the rules of the game         | Project owner  |
+| `acdp/architecture.md`| Module structure, boundaries, and ownership   | Project owner or first agent |
+| `acdp/governance.json` | Authority rules, lock defaults, escalation   | Project owner  |
+| `acdp/agents.registry.json` | Agent identity registry (starts empty) | Project owner  |
+| `acdp/agents.md`      | Agent operational status (starts empty)        | Project owner  |
+| `acdp/locks.json`     | Active locks (starts as `{"locks": []}`)       | Project owner  |
+| `acdp/events.log`     | Event log (starts empty)                       | Project owner  |
+| `acdp/state.md`       | Human-readable state summary                   | Project owner  |
+| `acdp/messages.schema.json` | JSON Schema for message validation       | Project owner  |
+
+### architecture.md Requirements
+
+`architecture.md` is the **map of the project**. Without it, agents cannot perform resource assessment and work blind. It MUST include:
+
+1. **Module list** — what areas exist in the project (e.g., `src/frontend/`, `src/api/`, `src/db/`)
+2. **Ownership** — who is responsible for each module (can be an agent, a human, or unassigned)
+3. **Restricted areas** — modules that require special approval to modify (e.g., `acdp/`, config files, deploy scripts)
+4. **Dependency flow** — how modules relate to each other (e.g., `frontend → api → db`)
+
+For new projects, `architecture.md` describes the **planned structure**. For existing projects, it documents the **current structure**.
+
+### Initialization Sequence
+
+1. The project owner creates the `/acdp/` directory and all required files.
+2. The owner defines `architecture.md` with the module structure.
+3. The owner configures `governance.json` with authority rules.
+4. The owner commits and pushes. The project is now ACDP-ready.
+5. Agents may begin registering (see section 1).
+
+---
+
 ## 1. Agent Registration
 
 Before an agent can participate, it must be registered and approved.
