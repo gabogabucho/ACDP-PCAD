@@ -1,13 +1,13 @@
 # ACDP — Agent Coordination Protocol for Development
 
-**Version:** 1.2.0
+**Version:** 1.3.0
 **Status:** Active
 
 ## Overview
 
 ACDP is a lightweight, file-based coordination protocol for multiple AI agents (and humans) collaborating on the same codebase. All state lives inside the repository. There is no central server.
 
-Phase 1 remote hardening adds an optional remote-first coordination mode over Git. When the repository exposes `origin/acdp/state`, that branch becomes the authoritative shared coordination branch for ACDP state.
+Remote hardening adds an optional remote-first coordination mode over Git. When the repository exposes `origin/acdp/state`, that branch becomes the authoritative shared coordination branch for ACDP state.
 
 ## Core Principles
 
@@ -238,6 +238,7 @@ Locks grant exclusive write access to a resource (file, module, or directory).
 - An agent may renew its own lock before expiration by updating `expires_at` in `locks.json` and appending a `lock` message with `"renewal": true` in the data field.
 - In remote-first mode, a lock is valid only if it still exists in the latest accepted `origin/acdp/state` and has not expired there. A locally remembered lock is not sufficient proof of ownership.
 - Renewal in remote-first mode MUST keep the same `lock_id` and MUST use a freshly synchronized `base_coord_rev`.
+- Tooling SHOULD expose an explicit renew operation so agents can renew by resource or `lock_id` without reacquiring.
 - If a remotely synchronized read shows the lock missing or expired, the agent MUST treat the lock as lost and reacquire instead of retroactively renewing.
 
 ### Lock Hierarchy
@@ -366,6 +367,12 @@ When an offline agent comes back:
 
 In remote-first mode, this means synchronizing `origin/acdp/state` first. If the remote branch no longer contains the previous `lock_id`, or the TTL has elapsed there, the lock is no longer authoritative.
 
+### Operational heartbeats
+
+- Agents MAY append lightweight `update` events as heartbeat/liveness signals during long-running work.
+- In remote-first mode, heartbeat updates MUST also follow sync-before-mutate and SHOULD include `base_coord_rev`.
+- Heartbeats do not extend lock TTL by themselves; use an explicit renew operation for that.
+
 ---
 
 ## 7. State File Ownership
@@ -383,6 +390,12 @@ ACDP maintains several files with overlapping information. In case of conflict, 
 | 5        | `state.md`             | Human-readable summary (DERIVED) |
 
 When `origin/acdp/state` exists, this hierarchy applies to the files on that branch for coordination purposes.
+
+### Remote cleanup and operator checks
+
+- Expired-lock cleanup in remote-first mode MUST re-read the latest coordination branch before publication and MUST only remove locks still expired on that refreshed base.
+- Cleanup release events remain schema-compatible and SHOULD carry `expired: true`, `lock_id` when known, and remote coordination metadata such as `base_coord_rev`.
+- Tooling SHOULD provide a doctor/readiness command that reports whether `origin/acdp/state` exists, whether local coordination files differ from the remote branch, whether protocol files are parseable enough to operate, and which active locks are held by the current agent.
 
 ### state.md
 

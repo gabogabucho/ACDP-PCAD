@@ -19,12 +19,12 @@ Goal: make coordination remote-first with minimal protocol surface change and no
 - [x] 2.2 Add coordination revision tracking to lock acquire/renew/release flows.
 - [x] 2.3 Add machine-readable remote status output for head revision, active locks, and stale-local detection.
 - [x] 2.4 Add safe retry/replay behavior for coordination writes that lose races.
-- [ ] 2.5 Add cleanup logic that revalidates expired locks after refresh before publishing cleanup.
+- [x] 2.5 Add cleanup logic that revalidates expired locks after refresh before publishing cleanup.
 
 ## Phase 3 — Adoption and migration
 
-- [ ] 3.1 Provide a migration guide for enabling `acdp/state` on existing repositories.
-- [ ] 3.2 Document legacy mode vs remote-first mode in prompts and operator guidance.
+- [x] 3.1 Provide a migration guide for enabling `acdp/state` on existing repositories.
+- [x] 3.2 Document legacy mode vs remote-first mode in prompts and operator guidance.
 - [ ] 3.3 Add examples showing multi-agent races, renewal, reconnect, and cleanup under `acdp/state`.
 - [ ] 3.4 Validate that old repositories remain usable without silent semantic breakage.
 

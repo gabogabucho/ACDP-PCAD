@@ -97,16 +97,18 @@
             "required": ["resource"],
             "properties": {
               "resource": { "type": "string" },
-              "expired": { "type": "boolean", "description": "True if lock was released due to TTL expiration" },
-              "override": { "type": "boolean", "description": "True if lock was force-released by a maintainer" },
-              "branch": { "type": "string", "description": "Working branch associated with the released lock, when relevant" },
-              "lock_id": { "type": "string", "description": "Stable unique identifier for the lock lifecycle" },
-              "base_coord_rev": { "type": "string", "description": "Remote coordination revision observed before the release mutation" }
-            }
-          }
-        }
-      }
-    },
+               "expired": { "type": "boolean", "description": "True if lock was released due to TTL expiration" },
+               "override": { "type": "boolean", "description": "True if lock was force-released by a maintainer" },
+               "branch": { "type": "string", "description": "Working branch associated with the released lock, when relevant" },
+               "lock_id": { "type": "string", "description": "Stable unique identifier for the lock lifecycle" },
+               "base_coord_rev": { "type": "string", "description": "Remote coordination revision observed before the release mutation" },
+               "coordination_mode": { "type": "string", "enum": ["legacy", "remote-first"], "description": "Coordination mode used when the release was emitted" },
+               "coordination_branch": { "type": "string", "description": "Coordination branch reference used for the release event when relevant" }
+             }
+           }
+         }
+       }
+     },
     {
       "if": { "properties": { "type": { "const": "update" } } },
       "then": {
@@ -116,7 +118,13 @@
             "properties": {
               "task": { "type": "string" },
               "progress": { "type": "string" },
-              "details": { "type": "string" }
+              "details": { "type": "string" },
+              "branch": { "type": "string", "description": "Working branch associated with this update" },
+              "heartbeat": { "type": "boolean", "description": "True when the update is a lightweight liveness heartbeat" },
+              "lock_id": { "type": "string", "description": "Stable lock identifier related to the update, when relevant" },
+              "base_coord_rev": { "type": "string", "description": "Remote coordination revision observed before the update mutation" },
+              "coordination_mode": { "type": "string", "enum": ["legacy", "remote-first"], "description": "Coordination mode used for the update" },
+              "coordination_branch": { "type": "string", "description": "Coordination branch reference used for the update when relevant" }
             }
           }
         }

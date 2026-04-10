@@ -235,8 +235,11 @@ module.exports = {
   REMOTE_NAME,
   COORDINATION_BRANCH,
   COORDINATION_REF,
+  DEFAULT_COORD_FILES,
   getRepoRoot,
   runGit,
+  readTreeFile,
+  getLocalFileContent,
   fetchCoordinationBranch,
   loadRemoteCoordinationSnapshot,
   publishRemoteMutation

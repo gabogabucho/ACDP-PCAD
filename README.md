@@ -225,7 +225,7 @@ The CLI keeps protocol artifacts aligned with the documented format:
 - `cleanup`, `batch`, and normal `release` flows emit canonical `release`/`complete` events instead of legacy payload shapes
 - `watch` renders the live JSONL stream without changing protocol state, while `export-logs` snapshots it for audit/archive workflows
 
-### Remote-first Phase 1
+### Remote-first hardening
 
 ACDP now supports an additive remote-first coordination mode over Git.
 
@@ -234,15 +234,21 @@ ACDP now supports an additive remote-first coordination mode over Git.
 - Remote lock lifecycle metadata now carries `lock_id` and `base_coord_rev`, while preserving the existing JSONL event shape.
 - If `origin/acdp/state` does not exist, the CLI falls back to the existing local/legacy behavior.
 
-Useful Phase 1 commands:
+Useful commands:
 
 - `node acdp/cli.js sync` — fetches and reports the current remote coordination head when available.
 - `node acdp/cli.js status --remote` — shows remote coordination availability, head revision, lock counts, and local-vs-remote staleness.
 - `node acdp/cli.js status --remote --json` — same data in machine-readable form.
 - `node acdp/cli.js lock-remote "src/file.js" file "Implement feature" 30` — acquires or renews a lock on `origin/acdp/state`, with bounded retry on remote-head races.
 - `node acdp/cli.js release-remote "src/file.js" "Feature complete"` — releases a remote lock and appends compatible lifecycle events on the coordination branch.
+- `node acdp/cli.js renew "src/file.js" 45` — explicitly renews an existing lock by resource or `lock_id`; in remote mode it preserves `lock_id` and refreshes `base_coord_rev`.
+- `node acdp/cli.js cleanup-remote` — safely removes only locks still expired on the latest remote base and emits compatible `release` events with `expired: true`.
+- `node acdp/cli.js heartbeat "still working"` — appends a lightweight schema-compatible liveness `update`, remote-aware when `origin/acdp/state` exists.
+- `node acdp/cli.js doctor --json` — reports remote readiness, branch health, protocol file sanity, and locks held by the current agent.
 
-Phase 1 intentionally keeps `locks.json` and `events.log` as the canonical coordination files; the change is *where* they are published and *how* tooling proves freshness.
+The hardened flow intentionally keeps `locks.json` and `events.log` as the canonical coordination files; the change is *where* they are published and *how* tooling proves freshness.
+
+Operator migration guidance is available in [`docs/remote-operations.md`](docs/remote-operations.md).
 
 **Definition of DONE (Exit Clause):**
 When the project's `state.md` is marked with `Status: DONE` (enforced natively via `node acdp/cli.js finish`), all participating agents MUST immediately cease operations, abandon internal task-seeking loops, and formally log off. Ongoing automated tasks should be aborted.
