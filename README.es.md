@@ -255,6 +255,7 @@ Notas de observabilidad remota:
 El flujo endurecido mantiene intencionalmente `locks.json` y `events.log` como archivos canónicos de coordinación; el cambio está en *dónde* se publican y *cómo* la tooling prueba frescura.
 
 La guía operativa/migración está en [`docs/remote-operations.md`](docs/remote-operations.md).
+Las notas prácticas de pruebas remotas y la interpretación de señales están en [`docs/remote-simulation-notes.md`](docs/remote-simulation-notes.md).
 
 **Definición de DONE (Criterio de Salida):**
 Cuando el archivo `state.md` del proyecto indique `Status: DONE` (lo cual se fuerza de manera nativa corriendo `node acdp/cli.js finish`), todos los agentes participantes DEBEN cesar sus operaciones de inmediato, cancelar sus bucles internos de búsqueda de tareas y cerrar sesión formalmente. No se admiten tareas automatizadas adicionales.
@@ -303,6 +304,8 @@ Ver [`acdp/examples/simulation-php.md`](acdp/examples/simulation-php.md) para un
 * Un conflicto de lock resuelto mediante mensajes request/ack/notify
 * Un archivo de configuración compartido gestionado sin merge conflicts
 * El `events.log` completo (23 mensajes)
+
+Para escenarios remote-first más operativos — reconexiones, snapshots stale, carreras por el mismo recurso y cleanup bajo carrera con renewal — ver [`docs/remote-simulation-notes.md`](docs/remote-simulation-notes.md).
 
 ---
 

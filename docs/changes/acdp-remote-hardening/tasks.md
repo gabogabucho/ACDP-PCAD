@@ -25,7 +25,7 @@ Goal: make coordination remote-first with minimal protocol surface change and no
 
 - [x] 3.1 Provide a migration guide for enabling `acdp/state` on existing repositories.
 - [x] 3.2 Document legacy mode vs remote-first mode in prompts and operator guidance.
-- [ ] 3.3 Add examples showing multi-agent races, renewal, reconnect, and cleanup under `acdp/state`.
+- [x] 3.3 Add examples showing multi-agent races, renewal, reconnect, and cleanup under `acdp/state`.
 - [ ] 3.4 Validate that old repositories remain usable without silent semantic breakage.
 
 ## Notes

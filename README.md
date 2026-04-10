@@ -255,6 +255,7 @@ Remote observability notes:
 The hardened flow intentionally keeps `locks.json` and `events.log` as the canonical coordination files; the change is *where* they are published and *how* tooling proves freshness.
 
 Operator migration guidance is available in [`docs/remote-operations.md`](docs/remote-operations.md).
+Practical remote trial notes and signal interpretation guidance are available in [`docs/remote-simulation-notes.md`](docs/remote-simulation-notes.md).
 
 **Definition of DONE (Exit Clause):**
 When the project's `state.md` is marked with `Status: DONE` (enforced natively via `node acdp/cli.js finish`), all participating agents MUST immediately cease operations, abandon internal task-seeking loops, and formally log off. Ongoing automated tasks should be aborted.
@@ -303,6 +304,8 @@ See [`acdp/examples/simulation-php.md`](acdp/examples/simulation-php.md) for a c
 * A lock conflict resolved through request/ack/notify messages
 * A shared config file managed without merge conflicts
 * The complete `events.log` output (23 messages)
+
+For remote-first operator scenarios such as reconnects, stale snapshots, same-resource races, and cleanup under renewal races, see [`docs/remote-simulation-notes.md`](docs/remote-simulation-notes.md).
 
 ---
 
