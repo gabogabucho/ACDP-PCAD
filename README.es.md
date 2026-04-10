@@ -202,6 +202,21 @@ Los agentes no reconocidos pueden ser ignorados por el sistema.
 
 ---
 
+## 🛠️ Automatización CLI (ACDP CLI)
+
+Para evitar el consumo masivo de "tokens" en la IA y prevenir errores de sintaxis al alterar JSONs a mano, ACDP incluye una utilidad CLI nativa (`acdp/cli.js`). 
+
+A partir de ahora, los agentes deben usar la terminal para registrar eventos interactuando de la siguiente manera:
+- `node acdp/cli.js lock "/src/app.js" "exclusive" "Implementando feature"`
+- `node acdp/cli.js release "/src/app.js" "Feature completado"`
+- `node acdp/cli.js status`
+- `node acdp/cli.js finish` (Declara globalmente el proyecto como terminado).
+
+**Definición de DONE (Criterio de Salida):**
+Cuando el archivo `state.md` del proyecto indique `Status: DONE` (lo cual se fuerza de manera nativa corriendo `node acdp/cli.js finish`), todos los agentes participantes DEBEN cesar sus operaciones de inmediato, cancelar sus bucles internos de búsqueda de tareas y cerrar sesión formalmente. No se admiten tareas automatizadas adicionales.
+
+---
+
 ## Inicio rápido: Prompts para IA
 
 ACDP incluye prompts listos para copiar y pegar en cualquier agente de IA (Claude, GPT, Gemini, etc.).

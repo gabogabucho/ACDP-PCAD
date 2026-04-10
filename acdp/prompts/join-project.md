@@ -18,9 +18,9 @@ Before writing ANY code, you MUST follow this onboarding sequence:
 
 2. **Understand current state**:
    - Read `acdp/state.md` for a summary of what's happening.
+   - **CRITICAL**: If `acdp/state.md` states `Status: DONE`, you must immediately STOP, exit the operation, and definitively report that the project is finished without touching the codebase.
+   - Execute `node acdp/cli.js status` to easily view active locks and general state.
    - Read `acdp/agents.md` to see who else is working and on what.
-   - Read `acdp/locks.json` to see which resources are currently locked.
-   - Read `acdp/events.log` (last 20 lines) for recent activity.
 
 3. **Register yourself**:
    - Add your entry to `acdp/agents.registry.json` with id, role, and permissions.
@@ -35,9 +35,8 @@ Before writing ANY code, you MUST follow this onboarding sequence:
    - Append an `intent` message to `acdp/events.log`.
 
 5. **Acquire locks BEFORE modifying files**:
-   - Check `acdp/locks.json` — if a resource you need is locked, send a `wait` message and do NOT proceed.
-   - If the resource is free, add a lock entry with resource, scope (file/directory), TTL, and reason.
-   - Append a `lock` message to `acdp/events.log`.
+   - Run `node acdp/cli.js status` to check if your resource is free. If requested resource is locked, DO NOT proceed.
+   - Execute `node acdp/cli.js lock <resource> <scope> "<reason>"`. DO NOT edit JSON files manually to prevent token bloat.
    - If you need a resource held by another agent, send a `request` message and wait for their `ack`.
 
 6. **Work on your task**:
@@ -52,8 +51,7 @@ Before writing ANY code, you MUST follow this onboarding sequence:
    - If your work will take longer, send an `update` message with your progress.
 
 8. **When done**:
-   - Release ALL your locks from `acdp/locks.json`.
-   - Append `release` and `complete` messages to `acdp/events.log`.
+   - Execute `node acdp/cli.js release <resource> "<resolution description>"` for ALL your locks.
    - Update your status to `idle` in `acdp/agents.md`.
    - Update `acdp/state.md` to reflect the current state.
 

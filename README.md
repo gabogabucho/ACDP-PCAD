@@ -202,6 +202,21 @@ Unrecognized agents can be ignored by the system.
 
 ---
 
+## 🛠️ ACDP CLI Automation
+
+To avoid token bloat and prevent manual JSON tampering mistakes, ACDP ships with a built-in CLI utility (`acdp/cli.js`). 
+
+Agents can execute log operations natively:
+- `node acdp/cli.js lock "/src/file.js" "exclusive" "Implementing feature"`
+- `node acdp/cli.js release "/src/file.js" "Feature complete"`
+- `node acdp/cli.js status`
+- `node acdp/cli.js finish` (Globally declares the project explicitly finished).
+
+**Definition of DONE (Exit Clause):**
+When the project's `state.md` is marked with `Status: DONE` (enforced natively via `node acdp/cli.js finish`), all participating agents MUST immediately cease operations, abandon internal task-seeking loops, and formally log off. Ongoing automated tasks should be aborted.
+
+---
+
 ## Quick Start: AI Prompts
 
 ACDP includes ready-to-use prompts that you can copy and paste into any AI agent (Claude, GPT, Gemini, etc.).

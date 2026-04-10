@@ -33,23 +33,22 @@ Your tasks:
    - Append an `intent` message to `acdp/events.log`.
 
 5. **Acquire locks** for the resources you will modify:
-   - Add entries to `acdp/locks.json` with resource, scope, TTL, and reason.
-   - Append `lock` messages to `acdp/events.log`.
+   - Execute: `node acdp/cli.js lock <resource> <scope> "<reason>"` for each file. This automatically manages the intent, locks, and events logging without manual JSON parsing.
 
 6. **Work on your task**, following the protocol at all times:
    - Commit with conventional commits and agent tag: `type(scope): description [agent:your-id]`
    - Use branch naming: `agent/your-id/task-name`
 
 7. **When done**, release locks, update state, and log completion:
-   - Remove entries from `acdp/locks.json`.
-   - Append `release` and `complete` messages to `acdp/events.log`.
+   - Execute: `node acdp/cli.js release <resource> "<completion_message>"` for each file.
    - Update `acdp/state.md` and your status in `acdp/agents.md`.
+   - If you are marking the entire project lifecycle as finished, execute `node acdp/cli.js finish`.
 
 IMPORTANT RULES:
 - Always read `acdp/locks.json` before modifying any file to check for active locks.
-- Always declare intent BEFORE acquiring locks.
+- Always declare intent BEFORE acquiring locks (handled automatically by the CLI).
 - Never modify `acdp/governance.json` or `acdp/protocol.md` without owner approval.
-- All messages in `events.log` are append-only — never delete or modify past entries.
+- We strongly recommend using `node acdp/cli.js` instead of modifying `events.log` manually to preserve JSONL integrity.
 - Use structured JSON messages following the schema in `acdp/messages.schema.json`.
 ```
 
