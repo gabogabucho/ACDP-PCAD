@@ -95,16 +95,26 @@ ACDP se implementa dentro del repositorio mediante una estructura estándar:
   architecture.md        # Mapa de módulos y ownership
   state.md               # Snapshot del estado actual
   agents.md              # Registro de agentes activos
-  events.log             # Log JSON estructurado de mensajes
-  locks.json             # Locks activos sobre recursos
+  events.log             # Log JSONL ({ type, agent, timestamp, data })
+  locks.json             # Store canónico de locks ({ "locks": [...] })
   governance.json        # Reglas de autoridad y override
   agents.registry.json   # Definición de agentes confiables
   messages.schema.json   # JSON Schema para validación de mensajes
+  cli.js                 # Entrada CLI protocol-safe
+  lock-manager.js        # Gestor de locks con ciclo de vida TTL
+  export-logs.js         # Exportador gzip para snapshots de events.log
+  log-exports/           # Archivos exportados (ignorados por Git)
   prompts/
     init-project.md      # Prompt para iniciar un proyecto con ACDP
     join-project.md      # Prompt para que un agente se una al proyecto
   examples/
     simulation-php.md    # Simulación completa con 3 agentes
+    simulation-stress-test.md
+    pattern-100-percent-ai.md
+    pattern-100-percent-ai.es.md
+/scripts/
+  git-hooks/
+    pre-commit           # Guard protocolar versionado (activación manual)
 ```
 
 ---
@@ -124,39 +134,28 @@ ACDP se implementa dentro del repositorio mediante una estructura estándar:
                 │   │  protocol.md             │   │
                 │   │  architecture.md         │   │
                 │   │  messages.schema.json    │   │
-                │   │  state.md                │◄──────────┐
-                │   │  agents.md               │◄───────┐  │
-                │   │  locks.json              │◄────┐  │  │
-                │   │  events.log (JSON)       │◄──┐ │  │  │
-                │   │  governance.json         │   │ │  │  │
-                │   │  agents.registry.json    │   │ │  │  │
-                │   │                          │   │ │  │  │
-                │   └──────────────────────────┘   │ │  │  │
-                │                                  │ │  │  │
-                └──────────────────────────────────┘ │ │  │  │
-                                                     │ │  │  │
-        ┌──────────────┐       ┌──────────────┐      │ │  │  │
-        │  Agente 01   │       │  Agente 02   │      │ │  │  │
-        │ (IA / humano)│       │ (IA / humano)│      │ │  │  │
-        └──────┬───────┘       └──────┬───────┘      │ │  │  │
-               │                      │              │ │  │  │
-               │  lee estado          │              │ │  │  │
-               ├──────────────────────┼──────────────┘ │  │  │
-               │                      │                │  │  │
-               │  declara intención   │                │  │  │
-               ├──────────────────────┼────────────────┘  │  │
-               │                      │                   │  │
-               │  toma lock           │                   │  │
-               ├──────────────────────┼───────────────────┘  │
-               │                      │                      │
-               │  modifica código     │                      │
-               ├──────────────────────┤                      │
-               │                      │                      │
-               │  libera lock         │                      │
-               ├──────────────────────┼──────────────────────┘
-               │                      │
-               │  actualiza estado    │
-               └──────────────────────┘
+                │   │  cli.js                  │◄─────────┐
+                │   │  lock-manager.js         │◄──────┐  │
+                │   │  state.md                │◄────┐ │  │
+                │   │  agents.md               │◄──┐ │ │  │
+                │   │  locks.json              │◄┐ │ │ │  │
+                │   │  events.log (JSONL)      │◄┼─┘ │ │  │
+                │   │  export-logs.js          │  │   │ │  │
+                │   └──────────────────────────┘  │   │ │  │
+                │   /scripts/git-hooks/pre-commit│◄──┘ │  │
+                └──────────────────────────────────┴────┴──┘
+                                                     ▲
+        ┌──────────────┐       ┌──────────────┐      │
+        │  Agente 01   │       │  Agente 02   │      │
+        │ (IA / humano)│       │ (IA / humano)│      │
+        └──────┬───────┘       └──────┬───────┘      │
+               │                      │              │
+               ├──── lee estado ──────┼──────────────┤
+               ├── declara intención ─┼──────────────┤
+               ├── toma/renueva lock ─┼──────────────┤
+               ├──── cleanup/watch ───┼──────────────┤
+               ├── libera/completa ───┼──────────────┤
+               └──── exporta logs ────┴──────────────┘
 ```
 
 ---
@@ -204,17 +203,50 @@ Los agentes no reconocidos pueden ser ignorados por el sistema.
 
 ## 🛠️ Automatización CLI (ACDP CLI)
 
-Para evitar el consumo masivo de "tokens" en la IA y prevenir errores de sintaxis al alterar JSONs a mano, ACDP incluye una utilidad CLI nativa (`acdp/cli.js`). 
+Para evitar el consumo masivo de "tokens" en la IA y prevenir errores de sintaxis al alterar JSONs a mano, ACDP incluye una utilidad CLI nativa (`acdp/cli.js`).
 
-A partir de ahora, los agentes deben usar la terminal para registrar eventos interactuando de la siguiente manera:
-- `node acdp/cli.js lock "/src/app.js" "exclusive" "Implementando feature"`
-- `node acdp/cli.js release "/src/app.js" "Feature completado"`
+**Las operaciones de lock deben pasar por la CLI.** No edites `acdp/locks.json` a mano ni agregues JSON ad-hoc a `acdp/events.log` para el ciclo de vida normal de locks.
+
+La CLI se apoya en `acdp/lock-manager.js`, que implementa un ciclo de vida de locks con TTL: adquisición, renovación por el mismo agente, cleanup de locks expirados, detección de conflictos entre scopes `file`/`directory` y persistencia canónica en `acdp/locks.json`.
+
+Los agentes pueden ejecutar operaciones protocol-safe como estas:
+- `node acdp/cli.js lock "src/app.js" file "Implementando feature" 30`
+- `node acdp/cli.js release "src/app.js" "Feature completado"`
 - `node acdp/cli.js status`
-- `node acdp/cli.js finish` (Declara globalmente el proyecto como terminado).
-- `node acdp/cli.js watch` (Lanza un radar TUI en tiempo real en la consola p/espectar eventos en vivo).
+- `node acdp/cli.js cleanup` (Elimina locks expirados y emite eventos `release` schema-compliant con `data.expired: true`.)
+- `node acdp/cli.js batch "refresh-cache" "src/cache/data.json" 5 file` (Para flujos breves de intent → lock → release.)
+- `node acdp/cli.js finish` (Declara globalmente el proyecto como terminado.)
+- `node acdp/cli.js watch` (Lanza un radar de terminal en tiempo real y muestra contexto TTL de locks cuando corresponde.)
+- `node acdp/export-logs.js` (Exporta `events.log` a un archivo gzip dentro de `acdp/log-exports/`, ignorado por Git.)
+
+La CLI mantiene los artefactos del protocolo alineados con el formato documentado:
+- `acdp/locks.json` usa la forma canónica `{ "locks": [...] }`
+- las entradas de `acdp/events.log` usan registros JSONL `{ type, agent, timestamp, data }` compatibles con `acdp/messages.schema.json`
+- `cleanup`, `batch` y los flujos normales de `release`/`complete` emiten eventos canónicos, no payloads legacy
+- `watch` solo observa el stream JSONL en vivo; `export-logs` lo snapshottea para auditoría o archivo
 
 **Definición de DONE (Criterio de Salida):**
 Cuando el archivo `state.md` del proyecto indique `Status: DONE` (lo cual se fuerza de manera nativa corriendo `node acdp/cli.js finish`), todos los agentes participantes DEBEN cesar sus operaciones de inmediato, cancelar sus bucles internos de búsqueda de tareas y cerrar sesión formalmente. No se admiten tareas automatizadas adicionales.
+
+---
+
+## 🔒 Guard de commits versionado
+
+ACDP incluye un guard pre-commit versionado en `scripts/git-hooks/pre-commit`.
+
+Qué valida:
+- bloquea commits cuando `acdp/locks.json` todavía contiene locks activos
+- exige que `acdp/locks.json` conserve la forma canónica `{ "locks": [...] }`
+- exige que `acdp/events.log` siga siendo JSONL válido y use `agent/data`, no `agent_id/payload`
+- verifica que los tipos de evento sigan alineados con `acdp/messages.schema.json`
+
+Instalación sugerida:
+
+```bash
+git config core.hooksPath scripts/git-hooks
+```
+
+Este hook **no se habilita automáticamente**. Habilitalo manualmente apuntando `core.hooksPath` a `scripts/git-hooks` o copiando `scripts/git-hooks/pre-commit` a `.git/hooks/pre-commit`. En sistemas tipo Unix, asegurate de que sea ejecutable.
 
 ---
 

@@ -95,16 +95,26 @@ ACDP is implemented inside the repository through a standard structure:
   architecture.md        # Module map and ownership
   state.md               # Current system snapshot
   agents.md              # Active agent roster
-  events.log             # Structured JSON message log
-  locks.json             # Active resource locks
+  events.log             # JSONL event log ({ type, agent, timestamp, data })
+  locks.json             # Canonical lock store ({ "locks": [...] })
   governance.json        # Authority and override rules
   agents.registry.json   # Trusted agent definitions
   messages.schema.json   # JSON Schema for message validation
+  cli.js                 # Protocol-safe CLI entrypoint
+  lock-manager.js        # TTL-backed lock lifecycle manager
+  export-logs.js         # Gzip exporter for events.log snapshots
+  log-exports/           # Generated log archives (Git-ignored)
   prompts/
     init-project.md      # Prompt to start a project with ACDP
     join-project.md      # Prompt for an agent to join a project
   examples/
     simulation-php.md    # Full simulation with 3 agents
+    simulation-stress-test.md
+    pattern-100-percent-ai.md
+    pattern-100-percent-ai.es.md
+/scripts/
+  git-hooks/
+    pre-commit           # Versioned protocol guard (manual opt-in)
 ```
 
 ---
@@ -124,39 +134,28 @@ ACDP is implemented inside the repository through a standard structure:
                 │   │  protocol.md             │   │
                 │   │  architecture.md         │   │
                 │   │  messages.schema.json    │   │
-                │   │  state.md                │◄──────────┐
-                │   │  agents.md               │◄───────┐  │
-                │   │  locks.json              │◄────┐  │  │
-                │   │  events.log (JSON)       │◄──┐ │  │  │
-                │   │  governance.json         │   │ │  │  │
-                │   │  agents.registry.json    │   │ │  │  │
-                │   │                          │   │ │  │  │
-                │   └──────────────────────────┘   │ │  │  │
-                │                                  │ │  │  │
-                └──────────────────────────────────┘ │ │  │  │
-                                                     │ │  │  │
-        ┌──────────────┐       ┌──────────────┐      │ │  │  │
-        │   Agent 01   │       │   Agent 02   │      │ │  │  │
-        │ (AI / human) │       │ (AI / human) │      │ │  │  │
-        └──────┬───────┘       └──────┬───────┘      │ │  │  │
-               │                      │              │ │  │  │
-               │  read state          │              │ │  │  │
-               ├──────────────────────┼──────────────┘ │  │  │
-               │                      │                │  │  │
-               │  declare intent      │                │  │  │
-               ├──────────────────────┼────────────────┘  │  │
-               │                      │                   │  │
-               │  acquire lock        │                   │  │
-               ├──────────────────────┼───────────────────┘  │
-               │                      │                      │
-               │  modify code         │                      │
-               ├──────────────────────┤                      │
-               │                      │                      │
-               │  release lock        │                      │
-               ├──────────────────────┼──────────────────────┘
-               │                      │
-               │  update state        │
-               └──────────────────────┘
+                │   │  cli.js                  │◄─────────┐
+                │   │  lock-manager.js         │◄──────┐  │
+                │   │  state.md                │◄────┐ │  │
+                │   │  agents.md               │◄──┐ │ │  │
+                │   │  locks.json              │◄┐ │ │ │  │
+                │   │  events.log (JSONL)      │◄┼─┘ │ │  │
+                │   │  export-logs.js          │  │   │ │  │
+                │   └──────────────────────────┘  │   │ │  │
+                │   /scripts/git-hooks/pre-commit│◄──┘ │  │
+                └──────────────────────────────────┴────┴──┘
+                                                     ▲
+        ┌──────────────┐       ┌──────────────┐      │
+        │   Agent 01   │       │   Agent 02   │      │
+        │ (AI / human) │       │ (AI / human) │      │
+        └──────┬───────┘       └──────┬───────┘      │
+               │                      │              │
+               ├──── read state ──────┼──────────────┤
+               ├── declare intent ────┼──────────────┤
+               ├─ acquire/renew lock ─┼──────────────┤
+               ├──── cleanup/watch ───┼──────────────┤
+               ├──── release/complete ┼──────────────┤
+               └──── export logs ─────┴──────────────┘
 ```
 
 ---
@@ -208,6 +207,8 @@ To avoid token bloat and prevent manual JSON tampering mistakes, ACDP ships with
 
 **Lock operations must go through the CLI.** Do not hand-edit `acdp/locks.json` or append ad-hoc JSON to `acdp/events.log` for normal lock lifecycle operations.
 
+The CLI is backed by `acdp/lock-manager.js`, which enforces a TTL-backed lock lifecycle: lock acquisition, same-agent renewal, expired-lock cleanup, conflict detection across file/directory scopes, and canonical persistence back into `acdp/locks.json`.
+
 Agents can execute protocol-safe operations natively:
 - `node acdp/cli.js lock "src/file.js" file "Implementing feature" 30`
 - `node acdp/cli.js release "src/file.js" "Feature complete"`
@@ -221,6 +222,8 @@ Agents can execute protocol-safe operations natively:
 The CLI keeps protocol artifacts aligned with the documented format:
 - `acdp/locks.json` uses the canonical object shape `{ "locks": [...] }`
 - `acdp/events.log` entries use `{ type, agent, timestamp, data }` JSONL records compatible with `acdp/messages.schema.json`
+- `cleanup`, `batch`, and normal `release` flows emit canonical `release`/`complete` events instead of legacy payload shapes
+- `watch` renders the live JSONL stream without changing protocol state, while `export-logs` snapshots it for audit/archive workflows
 
 **Definition of DONE (Exit Clause):**
 When the project's `state.md` is marked with `Status: DONE` (enforced natively via `node acdp/cli.js finish`), all participating agents MUST immediately cease operations, abandon internal task-seeking loops, and formally log off. Ongoing automated tasks should be aborted.
@@ -243,7 +246,7 @@ Suggested installation:
 git config core.hooksPath scripts/git-hooks
 ```
 
-If you do not want to change `core.hooksPath`, you can also copy the file into `.git/hooks/pre-commit` manually. On Unix-like systems, ensure it is executable.
+This hook is **not enabled automatically**. Enable it manually either by pointing `core.hooksPath` at `scripts/git-hooks` or by copying `scripts/git-hooks/pre-commit` into `.git/hooks/pre-commit`. On Unix-like systems, ensure it is executable.
 
 ---
 
