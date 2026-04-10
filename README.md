@@ -211,6 +211,7 @@ Agents can execute log operations natively:
 - `node acdp/cli.js release "/src/file.js" "Feature complete"`
 - `node acdp/cli.js status`
 - `node acdp/cli.js finish` (Globally declares the project explicitly finished).
+- `node acdp/cli.js watch` (Spawns a real-time TUI terminal radar to spectate agent events without web-servers).
 
 **Definition of DONE (Exit Clause):**
 When the project's `state.md` is marked with `Status: DONE` (enforced natively via `node acdp/cli.js finish`), all participating agents MUST immediately cease operations, abandon internal task-seeking loops, and formally log off. Ongoing automated tasks should be aborted.

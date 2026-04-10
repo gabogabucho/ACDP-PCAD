@@ -211,6 +211,7 @@ A partir de ahora, los agentes deben usar la terminal para registrar eventos int
 - `node acdp/cli.js release "/src/app.js" "Feature completado"`
 - `node acdp/cli.js status`
 - `node acdp/cli.js finish` (Declara globalmente el proyecto como terminado).
+- `node acdp/cli.js watch` (Lanza un radar TUI en tiempo real en la consola p/espectar eventos en vivo).
 
 **Definición de DONE (Criterio de Salida):**
 Cuando el archivo `state.md` del proyecto indique `Status: DONE` (lo cual se fuerza de manera nativa corriendo `node acdp/cli.js finish`), todos los agentes participantes DEBEN cesar sus operaciones de inmediato, cancelar sus bucles internos de búsqueda de tareas y cerrar sesión formalmente. No se admiten tareas automatizadas adicionales.

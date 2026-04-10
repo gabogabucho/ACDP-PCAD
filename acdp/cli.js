@@ -105,6 +105,52 @@ function markFinished() {
     console.log(`[ACDP] Project successfully marked as DONE. Environment is finalized.`);
 }
 
+const COLORS = {
+    blue: '\x1b[34m',
+    green: '\x1b[32m',
+    red: '\x1b[31m',
+    yellow: '\x1b[33m',
+    reset: '\x1b[0m'
+};
+
+function watchLogs() {
+    console.log(`${COLORS.green}📡 ACDP Live Monitor (TUI)${COLORS.reset}`);
+    console.log(`Watching for protocol events in: ${EVENTS_LOG}\n`);
+    
+    let lastSize = 0;
+    if (fs.existsSync(EVENTS_LOG)) {
+        lastSize = fs.statSync(EVENTS_LOG).size;
+    }
+
+    fs.watchFile(EVENTS_LOG, { interval: 500 }, (curr, prev) => {
+        if (curr.size > lastSize) {
+            const stream = fs.createReadStream(EVENTS_LOG, { start: lastSize, end: curr.size });
+            stream.on('data', chunk => {
+                const lines = chunk.toString().split('\n').filter(l => l.trim().length > 0);
+                lines.forEach(line => {
+                    try {
+                        const log = JSON.parse(line);
+                        let color = COLORS.reset;
+                        let prefix = '➤';
+                        if (log.type === 'intent') { color = COLORS.blue; prefix = '💡'; }
+                        if (log.type === 'lock') { color = COLORS.red; prefix = '🔒'; }
+                        if (log.type === 'release') { color = COLORS.green; prefix = '🔓'; }
+                        if (log.type === 'complete') { color = COLORS.yellow; prefix = '✅'; }
+
+                        const time = new Date(log.timestamp).toLocaleTimeString();
+                        let payloadStr = '';
+                        if (log.payload.resource) payloadStr += ` [${log.payload.resource}]`;
+                        if (log.payload.description) payloadStr += ` - ${log.payload.description}`;
+
+                        console.log(`${color}[${time}] ${log.agent_id} ${prefix} ${log.type.toUpperCase()}${payloadStr}${COLORS.reset}`);
+                    } catch (e) {}
+                });
+            });
+            lastSize = curr.size;
+        }
+    });
+}
+
 const args = process.argv.slice(2);
 const command = args[0];
 
@@ -123,6 +169,9 @@ switch (command) {
     case 'finish':
         markFinished();
         break;
+    case 'watch':
+        watchLogs();
+        break;
     default:
         console.log(`ACDP CLI Tools
 Usage:
@@ -130,6 +179,7 @@ Usage:
   node cli.js release <resource> [description]
   node cli.js status
   node cli.js finish
+  node cli.js watch
 
 Examples:
   node cli.js lock "/src/app.js" exclusive "Fixing routing bug"
