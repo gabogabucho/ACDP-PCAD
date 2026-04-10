@@ -100,6 +100,11 @@ ACDP is implemented inside the repository through a standard structure:
   governance.json        # Authority and override rules
   agents.registry.json   # Trusted agent definitions
   messages.schema.json   # JSON Schema for message validation
+  prompts/
+    init-project.md      # Prompt to start a project with ACDP
+    join-project.md      # Prompt for an agent to join a project
+  examples/
+    simulation-php.md    # Full simulation with 3 agents
 ```
 
 ---
@@ -194,6 +199,31 @@ Unrecognized agents can be ignored by the system.
 * Shared state over implicit synchronization
 * Distributed consensus over central authority
 * Observability for humans
+
+---
+
+## Quick Start: AI Prompts
+
+ACDP includes ready-to-use prompts that you can copy and paste into any AI agent (Claude, GPT, Gemini, etc.).
+
+### Start a new project
+
+Use [`acdp/prompts/init-project.md`](acdp/prompts/init-project.md) — gives the AI instructions to initialize the ACDP structure, register itself as the first agent, define the architecture, and start working.
+
+### Add an agent to an existing project
+
+Use [`acdp/prompts/join-project.md`](acdp/prompts/join-project.md) — gives the AI instructions to read the current state, register, check for active locks, declare intent, and contribute without conflicts.
+
+---
+
+## Simulation
+
+See [`acdp/examples/simulation-php.md`](acdp/examples/simulation-php.md) for a complete walkthrough of 3 agents (2 AIs + 1 human) building a PHP website, including:
+
+* Parallel work without conflicts
+* A lock conflict resolved through request/ack/notify messages
+* A shared config file managed without merge conflicts
+* The complete `events.log` output (23 messages)
 
 ---
 
