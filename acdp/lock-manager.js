@@ -5,6 +5,13 @@ const ACDP_DIR = process.env.ACDP_BASE_DIR || __dirname;
 const LOCKS_JSON = process.env.ACDP_LOCKS_JSON || path.join(ACDP_DIR, 'locks.json');
 const GOVERNANCE_JSON = process.env.ACDP_GOVERNANCE_JSON || path.join(ACDP_DIR, 'governance.json');
 
+function resolvePaths(options = {}) {
+  return {
+    locksJson: options.locksJson || LOCKS_JSON,
+    governanceJson: options.governanceJson || GOVERNANCE_JSON
+  };
+}
+
 function readJson(filePath, fallback) {
   if (!fs.existsSync(filePath)) {
     return fallback;
@@ -17,12 +24,13 @@ function readJson(filePath, fallback) {
   }
 }
 
-function getGovernance() {
-  return readJson(GOVERNANCE_JSON, {});
+function getGovernance(options = {}) {
+  const paths = resolvePaths(options);
+  return readJson(paths.governanceJson, {});
 }
 
-function getLockDefaults() {
-  const defaults = getGovernance().lock_defaults || {};
+function getLockDefaults(options = {}) {
+  const defaults = getGovernance(options).lock_defaults || {};
 
   return {
     ttlMinutes: Number.isInteger(defaults.ttl_minutes) ? defaults.ttl_minutes : 30,
@@ -43,13 +51,15 @@ function normalizeLocksDocument(raw) {
   return { locks: [] };
 }
 
-function loadLocksDocument() {
-  return normalizeLocksDocument(readJson(LOCKS_JSON, { locks: [] }));
+function loadLocksDocument(options = {}) {
+  const paths = resolvePaths(options);
+  return normalizeLocksDocument(readJson(paths.locksJson, { locks: [] }));
 }
 
-function saveLocksDocument(document) {
+function saveLocksDocument(document, options = {}) {
   const normalized = normalizeLocksDocument(document);
-  fs.writeFileSync(LOCKS_JSON, `${JSON.stringify(normalized, null, 2)}\n`);
+  const paths = resolvePaths(options);
+  fs.writeFileSync(paths.locksJson, `${JSON.stringify(normalized, null, 2)}\n`);
 }
 
 function inferScope(resource) {
@@ -149,13 +159,13 @@ function resolveTtlMinutes(ttlMinutes) {
   return parsed;
 }
 
-function loadLocks() {
-  return loadLocksDocument().locks.map(normalizeExistingLock);
+function loadLocks(options = {}) {
+  return loadLocksDocument(options).locks.map(normalizeExistingLock);
 }
 
 function cleanupExpiredLocks(options = {}) {
   const now = options.now instanceof Date ? options.now : new Date(options.now || Date.now());
-  const document = loadLocksDocument();
+  const document = loadLocksDocument(options);
   const activeLocks = [];
   const expiredLocks = [];
 
@@ -168,7 +178,7 @@ function cleanupExpiredLocks(options = {}) {
   }
 
   if (expiredLocks.length > 0) {
-    saveLocksDocument({ locks: activeLocks });
+    saveLocksDocument({ locks: activeLocks }, options);
   }
 
   if (typeof options.onExpired === 'function') {
@@ -194,16 +204,16 @@ function acquireLock(options) {
     throw new Error('reason is required.');
   }
 
-  cleanupExpiredLocks({ onExpired: options.onExpired });
+  cleanupExpiredLocks({ ...options, onExpired: options.onExpired });
 
-  const defaults = getLockDefaults();
+  const defaults = getLockDefaults(options);
   const ttlMinutes = resolveTtlMinutes(options.ttlMinutes);
   const scope = normalizeScope(resource, options.scope);
   const normalizedResource = normalizeResource(resource, scope);
   const now = options.now instanceof Date ? options.now : new Date(options.now || Date.now());
   const expiresAt = new Date(now.getTime() + ttlMinutes * 60 * 1000).toISOString();
 
-  const document = loadLocksDocument();
+  const document = loadLocksDocument(options);
   const locks = document.locks.map(normalizeExistingLock);
   const existingIndex = locks.findIndex(lock => lock.resource === normalizedResource);
   const existingLock = existingIndex >= 0 ? locks[existingIndex] : null;
@@ -240,13 +250,27 @@ function acquireLock(options) {
     reason
   };
 
+  if (renewal && existingLock.lock_id) {
+    nextLock.lock_id = existingLock.lock_id;
+  } else if (options.lockId) {
+    nextLock.lock_id = options.lockId;
+  }
+
+  if (options.baseCoordRev) {
+    nextLock.base_coord_rev = options.baseCoordRev;
+  }
+
+  if (options.branch) {
+    nextLock.branch = options.branch;
+  }
+
   if (renewal) {
     locks[existingIndex] = nextLock;
   } else {
     locks.push(nextLock);
   }
 
-  saveLocksDocument({ locks });
+  saveLocksDocument({ locks }, options);
 
   return {
     lock: nextLock,
@@ -256,7 +280,7 @@ function acquireLock(options) {
 }
 
 function releaseLock(resource, options = {}) {
-  const document = loadLocksDocument();
+  const document = loadLocksDocument(options);
   const locks = document.locks.map(normalizeExistingLock);
   const matchingIndex = locks.findIndex(lock => {
     const normalizedResource = normalizeResource(resource, normalizeScope(resource, lock.scope));
@@ -274,7 +298,7 @@ function releaseLock(resource, options = {}) {
   }
 
   locks.splice(matchingIndex, 1);
-  saveLocksDocument({ locks });
+  saveLocksDocument({ locks }, options);
 
   return { released: true, lock };
 }

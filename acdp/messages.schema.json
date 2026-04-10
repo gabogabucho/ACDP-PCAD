@@ -62,7 +62,8 @@
             "properties": {
               "task": { "type": "string" },
               "branch": { "type": "string" },
-              "resources": { "type": "array", "items": { "type": "string" } }
+              "resources": { "type": "array", "items": { "type": "string" } },
+              "base_coord_rev": { "type": "string", "description": "Remote coordination revision observed before mutating, when remote-first mode is active" }
             }
           }
         }
@@ -79,7 +80,10 @@
               "scope": { "type": "string", "enum": ["file", "directory"], "description": "Lock granularity. Defaults to file for paths with extensions, directory for paths ending in /" },
               "reason": { "type": "string" },
               "ttl_minutes": { "type": "integer", "minimum": 1, "maximum": 120 },
-              "renewal": { "type": "boolean", "description": "True if this is a lock renewal, not a new acquisition" }
+              "renewal": { "type": "boolean", "description": "True if this is a lock renewal, not a new acquisition" },
+              "branch": { "type": "string", "description": "Working branch carrying the change that required the lock" },
+              "lock_id": { "type": "string", "description": "Stable unique identifier for the lock lifecycle" },
+              "base_coord_rev": { "type": "string", "description": "Remote coordination revision observed before the lock mutation" }
             }
           }
         }
@@ -94,7 +98,10 @@
             "properties": {
               "resource": { "type": "string" },
               "expired": { "type": "boolean", "description": "True if lock was released due to TTL expiration" },
-              "override": { "type": "boolean", "description": "True if lock was force-released by a maintainer" }
+              "override": { "type": "boolean", "description": "True if lock was force-released by a maintainer" },
+              "branch": { "type": "string", "description": "Working branch associated with the released lock, when relevant" },
+              "lock_id": { "type": "string", "description": "Stable unique identifier for the lock lifecycle" },
+              "base_coord_rev": { "type": "string", "description": "Remote coordination revision observed before the release mutation" }
             }
           }
         }
@@ -124,7 +131,9 @@
             "properties": {
               "task": { "type": "string" },
               "branch": { "type": "string" },
-              "summary": { "type": "string" }
+              "summary": { "type": "string" },
+              "lock_id": { "type": "string", "description": "Stable unique identifier for the lock lifecycle related to this completion" },
+              "base_coord_rev": { "type": "string", "description": "Remote coordination revision observed before the release/complete mutation" }
             }
           }
         }

@@ -225,6 +225,25 @@ La CLI mantiene los artefactos del protocolo alineados con el formato documentad
 - `cleanup`, `batch` y los flujos normales de `release`/`complete` emiten eventos canónicos, no payloads legacy
 - `watch` solo observa el stream JSONL en vivo; `export-logs` lo snapshottea para auditoría o archivo
 
+### Remote-first Fase 1
+
+ACDP ahora soporta una fase inicial de coordinación remote-first sobre Git.
+
+- Si existe `origin/acdp/state`, esa rama pasa a ser la rama autoritativa de coordinación.
+- Las mutaciones remotas deben cumplir sync-before-mutate: primero fetch/lectura del último head de coordinación y recién después publicación desde esa revisión exacta.
+- El ciclo de vida remoto de locks ahora puede llevar `lock_id` y `base_coord_rev`, preservando al mismo tiempo el formato JSONL existente de los eventos.
+- Si `origin/acdp/state` no existe, la CLI vuelve al comportamiento local/legacy actual.
+
+Comandos útiles de Fase 1:
+
+- `node acdp/cli.js sync` — obtiene y reporta el head actual de coordinación remota cuando existe.
+- `node acdp/cli.js status --remote` — muestra disponibilidad de coordinación remota, revisión actual, cantidad de locks y si los archivos ACDP locales están stale respecto del remoto.
+- `node acdp/cli.js status --remote --json` — la misma información en formato machine-readable.
+- `node acdp/cli.js lock-remote "src/file.js" file "Implementar feature" 30` — adquiere o renueva un lock en `origin/acdp/state`, con retry acotado ante carreras por cambio de head remoto.
+- `node acdp/cli.js release-remote "src/file.js" "Feature completo"` — libera un lock remoto y agrega eventos de ciclo de vida compatibles en la rama de coordinación.
+
+La Fase 1 mantiene intencionalmente `locks.json` y `events.log` como archivos canónicos de coordinación; el cambio está en *dónde* se publican y *cómo* la tooling prueba frescura.
+
 **Definición de DONE (Criterio de Salida):**
 Cuando el archivo `state.md` del proyecto indique `Status: DONE` (lo cual se fuerza de manera nativa corriendo `node acdp/cli.js finish`), todos los agentes participantes DEBEN cesar sus operaciones de inmediato, cancelar sus bucles internos de búsqueda de tareas y cerrar sesión formalmente. No se admiten tareas automatizadas adicionales.
 

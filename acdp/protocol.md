@@ -1,11 +1,13 @@
 # ACDP — Agent Coordination Protocol for Development
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Status:** Active
 
 ## Overview
 
 ACDP is a lightweight, file-based coordination protocol for multiple AI agents (and humans) collaborating on the same codebase. All state lives inside the repository. There is no central server.
+
+Phase 1 remote hardening adds an optional remote-first coordination mode over Git. When the repository exposes `origin/acdp/state`, that branch becomes the authoritative shared coordination branch for ACDP state.
 
 ## Core Principles
 
@@ -15,7 +17,36 @@ ACDP is a lightweight, file-based coordination protocol for multiple AI agents (
 4. **Events are append-only** — the event log is a permanent, ordered record of all actions.
 5. **Governance is explicit** — rules for overrides, escalation, and agent management are codified.
 6. **Pull before push** — always pull latest state before modifying any ACDP file.
+7. **Sync before mutate in remote mode** — when `origin/acdp/state` exists, mutations must be based on the latest remote coordination revision.
 ---
+
+## Coordination Modes
+
+ACDP supports two compatible coordination modes:
+
+| Mode | When it applies | Source of coordination truth |
+|------|------------------|------------------------------|
+| Legacy local mode | `origin/acdp/state` is absent | The current branch's `acdp/` files under the existing rules |
+| Remote-first mode | `origin/acdp/state` exists | `origin/acdp/state` for shared coordination state |
+
+### Remote-first mode
+
+- `acdp/state` stores the same coordination artifacts already used by ACDP, including `locks.json`, `events.log`, `agents.md`, and `state.md`.
+- Feature work continues on normal working branches such as `agent/<id>/<task>`.
+- Agents MAY mirror ACDP files on feature branches for convenience, but `origin/acdp/state` is authoritative when present.
+- Tooling MUST report remote coordination availability honestly. It MUST NOT pretend the branch exists when it does not.
+
+### Sync-before-mutate rule
+
+In remote-first mode, an agent MUST fetch and resolve the latest `origin/acdp/state` head before any coordination mutation, including:
+
+- intent declaration tied to a remote lock flow
+- lock acquire / renew / release
+- cleanup of expired locks
+- agent operational status updates
+- `state.md` regeneration or publication
+
+Each accepted remote mutation MUST record the remote coordination revision it observed as `base_coord_rev`. Retrying with an old `base_coord_rev` after the remote head changed is invalid.
 
 ## Synchronization
 
@@ -40,6 +71,12 @@ An agent SHOULD also pull:
 - Periodically during long tasks (every 10–15 minutes)
 - After receiving an `ack` with `accepted: false`
 - Before sending a `complete` message
+
+### Remote-first interpretation
+
+When `origin/acdp/state` exists, the required synchronization target for coordination mutations is the coordination branch head itself, not only the current feature branch. In practice, an agent MUST fetch/read `origin/acdp/state`, derive the current coordination revision, and then mutate from that revision.
+
+An agent that has been offline or working from a stale cached coordination view MAY continue local code work at its own risk, but it MUST NOT assume a later coordination mutation will be accepted without a fresh sync.
 
 ### Rule
 
@@ -175,12 +212,15 @@ Locks grant exclusive write access to a resource (file, module, or directory).
 2. Check `locks.json` — if the resource is already locked by another agent, the request is denied.
 3. Verify the agent has not exceeded `max_locks_per_agent` (defined in `governance.json` → `lock_defaults`).
 4. If the resource is free, add an entry to `locks.json` with:
-   - `resource`: path or module name
-   - `agent_id`: requesting agent
-   - `scope`: `file` or `directory` (see Lock Hierarchy below)
-   - `acquired_at`: ISO 8601 timestamp
-   - `expires_at`: ISO 8601 timestamp (default TTL from `governance.json` → `lock_defaults.ttl_minutes`)
-   - `reason`: brief description of why the lock is needed
+    - `resource`: path or module name
+    - `agent_id`: requesting agent
+    - `scope`: `file` or `directory` (see Lock Hierarchy below)
+    - `acquired_at`: ISO 8601 timestamp
+    - `expires_at`: ISO 8601 timestamp (default TTL from `governance.json` → `lock_defaults.ttl_minutes`)
+    - `reason`: brief description of why the lock is needed
+    - `lock_id`: unique identifier for the lock lifecycle (required in remote-first mode; additive elsewhere)
+    - `base_coord_rev`: remote coordination revision observed before the mutation (required in remote-first mode)
+    - `branch`: agent working branch when relevant
 5. Append a `lock` message to `events.log`.
 6. Commit and push the changes.
 
@@ -196,6 +236,9 @@ Locks grant exclusive write access to a resource (file, module, or directory).
 - The maximum TTL is defined in `governance.json` → `lock_defaults.max_ttl_minutes`.
 - **Any agent** that detects an expired lock while reading `locks.json` MAY remove it and append a `release` message with `"expired": true` in the data field. This does not require being the lock owner.
 - An agent may renew its own lock before expiration by updating `expires_at` in `locks.json` and appending a `lock` message with `"renewal": true` in the data field.
+- In remote-first mode, a lock is valid only if it still exists in the latest accepted `origin/acdp/state` and has not expired there. A locally remembered lock is not sufficient proof of ownership.
+- Renewal in remote-first mode MUST keep the same `lock_id` and MUST use a freshly synchronized `base_coord_rev`.
+- If a remotely synchronized read shows the lock missing or expired, the agent MUST treat the lock as lost and reacquire instead of retroactively renewing.
 
 ### Lock Hierarchy
 
@@ -251,6 +294,8 @@ If two agents push changes to `events.log` simultaneously and a merge conflict o
 2. The agent whose push was rejected MUST pull, resolve the conflict by keeping ALL lines (ordering by timestamp), and push again.
 3. This is the ONLY file where merge conflicts are resolved by accepting all changes.
 
+In remote-first mode, the losing writer MUST first fetch the new `origin/acdp/state` head, regenerate any `base_coord_rev` metadata against that newer head, and re-evaluate whether the intended mutation is still valid before retrying.
+
 ---
 
 ## 5. Conflict Handling
@@ -261,6 +306,7 @@ If two agents push changes to `events.log` simultaneously and a merge conflict o
 - Declare intent early to signal other agents.
 - Work on feature branches, not directly on `main`.
 - **Pull before push** — always pull the latest ACDP state before pushing changes to any ACDP file.
+- In remote-first mode, never force-push coordination updates and never retry against a stale coordination revision.
 
 ### ACDP File Conflict Resolution
 
@@ -288,6 +334,12 @@ If a merge conflict occurs on an ACDP file (not project code):
 6. Total resolution time must not exceed `governance.json` → `conflict_resolution.max_resolution_time_minutes`.
 7. Once resolved, append a `resolve` message to `events.log`.
 
+### Remote-first retry rules
+
+- If publication of `acdp/state` fails because the remote head changed, the agent MUST fetch, re-read, and recompute from the new head.
+- Automatic retry SHOULD be bounded. Three attempts for the same intended mutation is the recommended ceiling.
+- If the refreshed state shows the requested resource is now incompatible (for example, another lock won the race), the agent MUST stop blind retries and follow the normal wait/request/escalation rules.
+
 ---
 
 ## 6. Agent Offline Detection
@@ -312,6 +364,8 @@ When an offline agent comes back:
 2. If its locks were released, it must re-declare intent and re-acquire locks.
 3. It sets its status back to `idle` in `agents.md`.
 
+In remote-first mode, this means synchronizing `origin/acdp/state` first. If the remote branch no longer contains the previous `lock_id`, or the TTL has elapsed there, the lock is no longer authoritative.
+
 ---
 
 ## 7. State File Ownership
@@ -327,6 +381,8 @@ ACDP maintains several files with overlapping information. In case of conflict, 
 | 3        | `agents.registry.json` | Agent identity and approval  |
 | 4        | `agents.md`            | Agent operational status     |
 | 5        | `state.md`             | Human-readable summary (DERIVED) |
+
+When `origin/acdp/state` exists, this hierarchy applies to the files on that branch for coordination purposes.
 
 ### state.md
 
@@ -357,6 +413,7 @@ These files serve different purposes and MUST NOT contradict each other:
 | Branch Pattern            | Purpose                   |
 |---------------------------|---------------------------|
 | `main`                    | Stable, protected         |
+| `acdp/state`              | Authoritative coordination branch when present |
 | `agent/<agent-id>/<task>` | Agent working branch      |
 | `review/<agent-id>/<task>`| Ready for review          |
 
@@ -398,9 +455,9 @@ Every message MUST include these fields:
 | Type       | Purpose                                          | Key `data` fields                          |
 |------------|--------------------------------------------------|--------------------------------------------|
 | `register` | Agent announces its presence                     | `role`, `public_key`                       |
-| `intent`   | Agent declares what it will work on              | `task`, `branch`, `resources`              |
-| `lock`     | Agent acquires exclusive access to a resource    | `resource`, `scope`, `reason`, `ttl_minutes` |
-| `release`  | Agent releases a previously held lock            | `resource`, `expired`, `override`          |
+| `intent`   | Agent declares what it will work on              | `task`, `branch`, `resources`, `base_coord_rev?` |
+| `lock`     | Agent acquires exclusive access to a resource    | `resource`, `scope`, `reason`, `ttl_minutes`, `lock_id?`, `base_coord_rev?`, `branch?` |
+| `release`  | Agent releases a previously held lock            | `resource`, `expired`, `override`, `lock_id?`, `base_coord_rev?`, `branch?`          |
 | `update`   | Agent reports progress on current task           | `task`, `progress`, `details`              |
 | `complete` | Agent declares a task finished                   | `task`, `branch`, `summary`                |
 | `wait`     | Agent signals it is blocked waiting for a lock   | `resource`, `held_by`                      |
@@ -424,12 +481,12 @@ Every message MUST include these fields:
 
 **Lock:**
 ```json
-{"type":"lock","agent":"agent-alpha","timestamp":"2026-04-10T00:15:00-03:00","data":{"resource":"src/frontend/pages/","scope":"directory","reason":"Building dashboard views","ttl_minutes":30}}
+{"type":"lock","agent":"agent-alpha","timestamp":"2026-04-10T00:15:00-03:00","data":{"resource":"src/frontend/pages/","scope":"directory","reason":"Building dashboard views","ttl_minutes":30,"branch":"agent/agent-alpha/user-dashboard","lock_id":"agent-alpha-lck-01","base_coord_rev":"8d4f2ab9f9b7"}}
 ```
 
 **Release (expired):**
 ```json
-{"type":"release","agent":"agent-beta","timestamp":"2026-04-10T01:00:00-03:00","data":{"resource":"src/frontend/pages/","expired":true}}
+{"type":"release","agent":"agent-beta","timestamp":"2026-04-10T01:00:00-03:00","data":{"resource":"src/frontend/pages/","expired":true,"lock_id":"agent-alpha-lck-01","base_coord_rev":"8d4f2ab9f9b7"}}
 ```
 
 **Wait:**

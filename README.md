@@ -225,6 +225,25 @@ The CLI keeps protocol artifacts aligned with the documented format:
 - `cleanup`, `batch`, and normal `release` flows emit canonical `release`/`complete` events instead of legacy payload shapes
 - `watch` renders the live JSONL stream without changing protocol state, while `export-logs` snapshots it for audit/archive workflows
 
+### Remote-first Phase 1
+
+ACDP now supports an additive remote-first coordination mode over Git.
+
+- If `origin/acdp/state` exists, treat that branch as the authoritative coordination branch.
+- Remote mutations must sync before mutate: fetch/read the latest coordination head first, then publish from that exact revision.
+- Remote lock lifecycle metadata now carries `lock_id` and `base_coord_rev`, while preserving the existing JSONL event shape.
+- If `origin/acdp/state` does not exist, the CLI falls back to the existing local/legacy behavior.
+
+Useful Phase 1 commands:
+
+- `node acdp/cli.js sync` — fetches and reports the current remote coordination head when available.
+- `node acdp/cli.js status --remote` — shows remote coordination availability, head revision, lock counts, and local-vs-remote staleness.
+- `node acdp/cli.js status --remote --json` — same data in machine-readable form.
+- `node acdp/cli.js lock-remote "src/file.js" file "Implement feature" 30` — acquires or renews a lock on `origin/acdp/state`, with bounded retry on remote-head races.
+- `node acdp/cli.js release-remote "src/file.js" "Feature complete"` — releases a remote lock and appends compatible lifecycle events on the coordination branch.
+
+Phase 1 intentionally keeps `locks.json` and `events.log` as the canonical coordination files; the change is *where* they are published and *how* tooling proves freshness.
+
 **Definition of DONE (Exit Clause):**
 When the project's `state.md` is marked with `Status: DONE` (enforced natively via `node acdp/cli.js finish`), all participating agents MUST immediately cease operations, abandon internal task-seeking loops, and formally log off. Ongoing automated tasks should be aborted.
 
