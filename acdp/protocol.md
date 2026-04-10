@@ -26,7 +26,7 @@ Before an agent can participate, it must be registered.
 1. The agent submits a registration request by appending an entry to `agents.registry.json`.
 2. A maintainer (defined in `governance.json`) reviews and approves the registration.
 3. Upon approval, the agent is added to `agents.md` with status `idle`.
-4. A `REGISTERED` event is appended to `events.log`.
+4. A `register` message is appended to `events.log`.
 
 ### Required Fields
 
@@ -47,7 +47,7 @@ Before working on any task, an agent MUST declare intent.
 
 1. Update `agents.md` with the current task description and target branch.
 2. Set agent status to `working`.
-3. Append an `INTENT_DECLARED` event to `events.log`.
+3. Append an `intent` message to `events.log`.
 
 ### Rules
 
@@ -67,16 +67,17 @@ Locks grant exclusive write access to a resource (file, module, or directory).
 2. If the resource is free, add an entry to `locks.json` with:
    - `resource`: path or module name
    - `agent_id`: requesting agent
+   - `scope`: `file` or `directory` (see Lock Hierarchy below)
    - `acquired_at`: ISO 8601 timestamp
    - `expires_at`: ISO 8601 timestamp (default TTL: 30 minutes)
    - `reason`: brief description of why the lock is needed
-3. Append a `LOCK_ACQUIRED` event to `events.log`.
+3. Append a `lock` message to `events.log`.
 4. Commit the changes.
 
 ### Releasing a Lock
 
 1. Remove the lock entry from `locks.json`.
-2. Append a `LOCK_RELEASED` event to `events.log`.
+2. Append a `release` message to `events.log`.
 3. Commit the changes.
 
 ### Rules
@@ -86,12 +87,28 @@ Locks grant exclusive write access to a resource (file, module, or directory).
 - A maintainer may force-release a lock (see Governance).
 - An agent may renew its own lock before expiration by updating `expires_at`.
 
+### Lock Hierarchy
+
+Locks have a `scope` that determines their granularity:
+
+| Scope       | Behavior                                              |
+|-------------|-------------------------------------------------------|
+| `file`      | Locks ONLY the specified file                         |
+| `directory` | Locks ALL files within the specified directory (recursive) |
+
+Hierarchy rules:
+
+- A `file` lock CANNOT be acquired if a `directory` lock exists that contains that file's path.
+- A `directory` lock CANNOT be acquired if any `file` lock exists within that directory.
+- Two `file` locks on different files within the same directory CAN coexist.
+- If `scope` is omitted, it defaults to `file` for paths with extensions, `directory` for paths ending in `/`.
+
 ### Wait Queue
 
 If a lock is held by another agent:
 
 1. The requesting agent sets its status to `waiting` in `agents.md`.
-2. An `AGENT_WAITING` event is appended to `events.log`.
+2. A `wait` message is appended to `events.log`.
 3. The agent polls `locks.json` until the resource is free.
 
 ---

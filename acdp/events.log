@@ -3,8 +3,8 @@
 {"type":"register","agent":"agent-gamma","timestamp":"2026-04-09T22:10:00-03:00","data":{"role":"ops","public_key":"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICaAbBcCdDeEfFgGhHiIjJkKlLmMnNoOpPqQrRsStT"}}
 {"type":"intent","agent":"agent-alpha","timestamp":"2026-04-09T23:00:00-03:00","data":{"task":"Implement user dashboard components","branch":"agent/agent-alpha/user-dashboard","resources":["src/frontend/pages/","src/api/routes/auth.ts"]}}
 {"type":"intent","agent":"agent-beta","timestamp":"2026-04-09T23:05:00-03:00","data":{"task":"Add user profile API endpoints","branch":"agent/agent-beta/user-profile-api","resources":["src/api/routes/users.ts","src/db/models/user.ts"]}}
-{"type":"lock","agent":"agent-alpha","timestamp":"2026-04-10T00:15:00-03:00","data":{"resource":"src/frontend/pages/","reason":"Building dashboard views","ttl_minutes":30}}
-{"type":"lock","agent":"agent-alpha","timestamp":"2026-04-10T00:20:00-03:00","data":{"resource":"src/api/routes/auth.ts","reason":"Integrating auth flow into dashboard","ttl_minutes":30}}
+{"type":"lock","agent":"agent-alpha","timestamp":"2026-04-10T00:15:00-03:00","data":{"resource":"src/frontend/pages/","scope":"directory","reason":"Building dashboard views","ttl_minutes":30}}
+{"type":"lock","agent":"agent-alpha","timestamp":"2026-04-10T00:20:00-03:00","data":{"resource":"src/api/routes/auth.ts","scope":"file","reason":"Integrating auth flow into dashboard","ttl_minutes":30}}
 {"type":"wait","agent":"agent-beta","timestamp":"2026-04-10T00:22:00-03:00","data":{"resource":"src/api/routes/","held_by":"agent-alpha"}}
 {"type":"request","agent":"agent-beta","timestamp":"2026-04-10T00:25:00-03:00","data":{"to":"agent-alpha","action":"release lock on src/api/routes/auth.ts","reason":"Need access to api/routes/ for user profile endpoints"}}
 {"type":"ack","agent":"agent-alpha","timestamp":"2026-04-10T00:26:00-03:00","data":{"reference":"agent-beta:request:2026-04-10T00:25:00-03:00","accepted":true}}

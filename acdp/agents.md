@@ -20,7 +20,7 @@
 | **Role**     | developer                                |
 | **Task**     | Add user profile API endpoints           |
 | **Branch**   | `agent/agent-beta/user-profile-api`      |
-| **Status**   | waiting                                  |
+| **Status**   | working                                  |
 
 ---
 

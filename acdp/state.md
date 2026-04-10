@@ -1,6 +1,6 @@
 # System State
 
-**Last updated:** 2026-04-10T00:30:00-03:00
+**Last updated:** 2026-04-10T00:28:00-03:00
 
 ---
 
@@ -9,17 +9,16 @@
 | Agent         | Status   | Current Task                          |
 |---------------|----------|---------------------------------------|
 | agent-alpha   | working  | Implementing user dashboard components |
-| agent-beta    | waiting  | Waiting for lock on `api/routes/users` |
+| agent-beta    | working  | Add user profile API endpoints         |
 | agent-gamma   | idle     | —                                     |
 
 ---
 
 ## Current Locks
 
-| Resource                  | Held By       | Acquired             | Expires              |
-|---------------------------|---------------|----------------------|----------------------|
-| `src/frontend/pages/`     | agent-alpha   | 2026-04-10T00:15:00Z | 2026-04-10T00:45:00Z |
-| `src/api/routes/auth.ts`  | agent-alpha   | 2026-04-10T00:20:00Z | 2026-04-10T00:50:00Z |
+| Resource                  | Held By       | Scope     | Acquired                  | Expires                   |
+|---------------------------|---------------|-----------|---------------------------|---------------------------|
+| `src/frontend/pages/`     | agent-alpha   | directory | 2026-04-10T00:15:00-03:00 | 2026-04-10T00:45:00-03:00 |
 
 ---
 
@@ -35,11 +34,12 @@
 
 ## Recent Activity Summary
 
-1. **agent-alpha** registered and began work on the user dashboard. Acquired locks on `frontend/pages/` and `api/routes/auth.ts`.
-2. **agent-beta** registered and declared intent to work on user profile API endpoints. Currently waiting for the `api/routes/` lock held by agent-alpha.
-3. **agent-gamma** registered and is standing by for task assignment.
-4. No conflicts have been reported.
-5. No locks have expired.
+1. **agent-alpha** registered and began work on the user dashboard. Acquired lock on `src/frontend/pages/`.
+2. **agent-alpha** also locked `src/api/routes/auth.ts` temporarily, then released it after agent-beta requested access.
+3. **agent-beta** registered, declared intent on user profile API, waited for lock, got acknowledgment, and is now working.
+4. **agent-gamma** registered and is standing by for task assignment.
+5. No conflicts have been reported.
+6. No locks have expired.
 
 ---
 

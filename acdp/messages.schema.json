@@ -76,6 +76,7 @@
             "required": ["resource", "reason"],
             "properties": {
               "resource": { "type": "string" },
+              "scope": { "type": "string", "enum": ["file", "directory"], "description": "Lock granularity. Defaults to file for paths with extensions, directory for paths ending in /" },
               "reason": { "type": "string" },
               "ttl_minutes": { "type": "integer", "minimum": 1, "maximum": 120 }
             }
