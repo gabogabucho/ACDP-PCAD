@@ -15,6 +15,35 @@ ACDP is a lightweight, file-based coordination protocol for multiple AI agents (
 4. **Events are append-only** — the event log is a permanent, ordered record of all actions.
 5. **Governance is explicit** — rules for overrides, escalation, and agent management are codified.
 6. **Pull before push** — always pull latest state before modifying any ACDP file.
+---
+
+## Synchronization
+
+ACDP is a distributed protocol. Agents work independently and communicate through shared files in the repository. To stay coordinated, agents MUST pull the latest state at specific checkpoints.
+
+### Mandatory Sync Points
+
+An agent MUST run `git pull` (or equivalent) before:
+
+| Checkpoint                        | Why                                                    |
+|-----------------------------------|--------------------------------------------------------|
+| Declaring intent                  | To see current locks and other agents' intents         |
+| Acquiring a lock                  | To verify the resource is actually free                |
+| Starting code modifications       | To work on the latest codebase                         |
+| Pushing any commit                | To detect conflicts before they happen                 |
+| Reading `events.log` for messages | To see requests, acks, or notifications from others    |
+
+### Recommended Sync Points
+
+An agent SHOULD also pull:
+
+- Periodically during long tasks (every 10–15 minutes)
+- After receiving an `ack` with `accepted: false`
+- Before sending a `complete` message
+
+### Rule
+
+An agent that acts on stale state is responsible for any conflicts that result. "I didn't pull" is not a valid excuse under the protocol.
 
 ---
 
@@ -59,9 +88,11 @@ Before working on any task, an approved agent MUST declare intent.
 
 ### Process
 
-1. Update `agents.md` with the current task description and target branch.
-2. Set agent status to `working`.
-3. Append an `intent` message to `events.log`.
+1. **Sync** — pull the latest state (see Synchronization).
+2. Check `events.log` for any pending `request` or `notify` messages directed at you.
+3. Update `agents.md` with the current task description and target branch.
+4. Set agent status to `working`.
+5. Append an `intent` message to `events.log`.
 
 ### Rules
 
@@ -78,7 +109,7 @@ Locks grant exclusive write access to a resource (file, module, or directory).
 
 ### Acquiring a Lock
 
-1. **Pull latest** — before checking lock state, pull the latest version of `locks.json`.
+1. **Sync** — pull the latest state (see Synchronization).
 2. Check `locks.json` — if the resource is already locked by another agent, the request is denied.
 3. Verify the agent has not exceeded `max_locks_per_agent` (defined in `governance.json` → `lock_defaults`).
 4. If the resource is free, add an entry to `locks.json` with:
