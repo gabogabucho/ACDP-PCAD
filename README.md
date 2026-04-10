@@ -75,6 +75,10 @@ Relevant actions are recorded in a sequential, append-only log.
 
 Module ownership, restricted areas, and cross-module coordination rules are explicitly defined.
 
+### Agent Communication
+
+All coordination between agents happens through structured JSON messages appended to `events.log`. The protocol defines 12 message types (`register`, `intent`, `lock`, `release`, `update`, `complete`, `wait`, `block`, `resolve`, `notify`, `request`, `ack`) with a formal schema for validation.
+
 ### Governance
 
 Rules are defined about who can participate, how decisions are made, and who can override locks.
@@ -91,10 +95,11 @@ ACDP is implemented inside the repository through a standard structure:
   architecture.md        # Module map and ownership
   state.md               # Current system snapshot
   agents.md              # Active agent roster
-  events.log             # Sequential action log
+  events.log             # Structured JSON message log
   locks.json             # Active resource locks
   governance.json        # Authority and override rules
   agents.registry.json   # Trusted agent definitions
+  messages.schema.json   # JSON Schema for message validation
 ```
 
 ---
@@ -113,10 +118,11 @@ ACDP is implemented inside the repository through a standard structure:
                 │   │                          │   │
                 │   │  protocol.md             │   │
                 │   │  architecture.md         │   │
+                │   │  messages.schema.json    │   │
                 │   │  state.md                │◄──────────┐
                 │   │  agents.md               │◄───────┐  │
                 │   │  locks.json              │◄────┐  │  │
-                │   │  events.log              │◄──┐ │  │  │
+                │   │  events.log (JSON)       │◄──┐ │  │  │
                 │   │  governance.json         │   │ │  │  │
                 │   │  agents.registry.json    │   │ │  │  │
                 │   │                          │   │ │  │  │

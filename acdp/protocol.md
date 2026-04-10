@@ -98,33 +98,23 @@ If a lock is held by another agent:
 
 ## 4. Event Logging
 
-All significant actions are recorded in `events.log`.
+All significant actions are recorded in `events.log` as structured JSON messages (one per line).
 
 ### Format
 
-```
-[ISO-8601 timestamp] [EVENT_TYPE] agent:<agent_id> — <description>
-```
+Each line in `events.log` is a valid JSON object:
 
-### Event Types
-
-| Event             | Trigger                                    |
-|-------------------|--------------------------------------------|
-| `REGISTERED`      | Agent completes registration               |
-| `INTENT_DECLARED` | Agent declares work intent                 |
-| `LOCK_ACQUIRED`   | Agent acquires a resource lock             |
-| `LOCK_RELEASED`   | Agent releases a resource lock             |
-| `LOCK_EXPIRED`    | A lock's TTL has elapsed                   |
-| `LOCK_OVERRIDE`   | A maintainer force-releases a lock         |
-| `AGENT_WAITING`   | Agent is blocked waiting for a lock        |
-| `TASK_COMPLETED`  | Agent finishes a declared task             |
-| `CONFLICT`        | A merge conflict or coordination issue     |
-| `AGENT_OFFLINE`   | Agent goes offline or becomes unresponsive |
+```json
+{"type":"<message_type>","agent":"<agent_id>","timestamp":"<ISO-8601>","data":{}}
+```
 
 ### Rules
 
 - Events are append-only. Never delete or modify past entries.
-- Each event must have a timestamp, event type, agent id, and description.
+- Each event MUST be a single JSON object on its own line (JSONL format).
+- Each event MUST include `type`, `agent`, and `timestamp`.
+- The `data` field contains type-specific payload.
+- See section 8 (Agent Communication Protocol) for the full message type catalog.
 
 ---
 
@@ -139,14 +129,15 @@ All significant actions are recorded in `events.log`.
 ### Detection
 
 - Before merging, check `locks.json` for active locks on affected files.
-- If a merge conflict occurs, append a `CONFLICT` event to `events.log`.
+- If a merge conflict occurs, append a `block` message to `events.log`.
 
 ### Resolution
 
 1. The agent with the active lock has priority.
-2. If both agents have locks on different files within the same module, they must coordinate via `events.log`.
+2. If both agents have locks on different files within the same module, they must coordinate via `events.log` using `request` and `ack` messages.
 3. If resolution fails, escalate to a maintainer (defined in `governance.json`).
 4. The maintainer may force-release locks and assign resolution priority.
+5. Once resolved, append a `resolve` message to `events.log`.
 
 ---
 
@@ -173,3 +164,85 @@ Example:
 ```
 feat(auth): add JWT refresh endpoint [agent:agent-alpha]
 ```
+
+---
+
+## 8. Agent Communication Protocol
+
+All coordination between agents happens through structured JSON messages appended to `events.log`.
+
+### Message Structure
+
+Every message MUST include these fields:
+
+| Field       | Type   | Required | Description                        |
+|-------------|--------|----------|------------------------------------|
+| `type`      | string | yes      | One of the supported message types |
+| `agent`     | string | yes      | ID of the agent sending the message |
+| `timestamp` | string | yes      | ISO 8601 timestamp                 |
+| `data`      | object | no       | Type-specific payload              |
+
+### Supported Message Types
+
+| Type       | Purpose                                          | Key `data` fields                          |
+|------------|--------------------------------------------------|--------------------------------------------|
+| `register` | Agent announces its presence                     | `role`, `public_key`                       |
+| `intent`   | Agent declares what it will work on              | `task`, `branch`, `resources`              |
+| `lock`     | Agent acquires exclusive access to a resource    | `resource`, `reason`, `ttl_minutes`        |
+| `release`  | Agent releases a previously held lock            | `resource`                                 |
+| `update`   | Agent reports progress on current task           | `task`, `progress`, `details`              |
+| `complete` | Agent declares a task finished                   | `task`, `branch`, `summary`                |
+| `wait`     | Agent signals it is blocked waiting for a lock   | `resource`, `held_by`                      |
+| `block`    | Agent reports a blocking issue (conflict, error) | `reason`, `affected_resources`             |
+| `resolve`  | A blocking issue has been resolved               | `reference`, `resolution`                  |
+| `notify`   | Agent sends an informational broadcast           | `message`, `severity`                      |
+| `request`  | Agent asks another agent to take an action       | `to`, `action`, `reason`                   |
+| `ack`      | Agent acknowledges a request or notification     | `reference`, `accepted`                    |
+
+### Message Examples
+
+**Register:**
+```json
+{"type":"register","agent":"agent-alpha","timestamp":"2026-04-09T22:00:00-03:00","data":{"role":"developer","public_key":"ssh-ed25519 AAAAC3..."}}
+```
+
+**Intent:**
+```json
+{"type":"intent","agent":"agent-alpha","timestamp":"2026-04-09T23:00:00-03:00","data":{"task":"Implement user dashboard","branch":"agent/agent-alpha/user-dashboard","resources":["src/frontend/pages/","src/api/routes/auth.ts"]}}
+```
+
+**Lock:**
+```json
+{"type":"lock","agent":"agent-alpha","timestamp":"2026-04-10T00:15:00-03:00","data":{"resource":"src/frontend/pages/","reason":"Building dashboard views","ttl_minutes":30}}
+```
+
+**Wait:**
+```json
+{"type":"wait","agent":"agent-beta","timestamp":"2026-04-10T00:22:00-03:00","data":{"resource":"src/api/routes/","held_by":"agent-alpha"}}
+```
+
+**Request:**
+```json
+{"type":"request","agent":"agent-beta","timestamp":"2026-04-10T00:25:00-03:00","data":{"to":"agent-alpha","action":"release lock on src/api/routes/","reason":"Need to implement user profile endpoints"}}
+```
+
+**Ack:**
+```json
+{"type":"ack","agent":"agent-alpha","timestamp":"2026-04-10T00:26:00-03:00","data":{"reference":"agent-beta:request:2026-04-10T00:25:00-03:00","accepted":true}}
+```
+
+### Sequencing Rules
+
+1. `register` MUST be the first message from any agent.
+2. `intent` MUST precede `lock` — an agent cannot lock without declared intent.
+3. `lock` MUST precede any code modification on the locked resource.
+4. `release` MUST follow task completion or before declaring a new intent.
+5. `ack` SHOULD reference the original message using `agent:type:timestamp` format.
+6. `block` and `resolve` always come in pairs — every block must eventually be resolved.
+
+### Design Constraints
+
+- Messages are **minimal** — include only what is necessary for coordination.
+- Messages are **machine-readable** — valid JSON, parseable by any agent.
+- Messages are **immutable** — once appended, never modified or deleted.
+- The full schema is defined in `messages.schema.json`.

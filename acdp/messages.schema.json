@@ -1,0 +1,215 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ACDP Message",
+  "description": "Schema for Agent Communication Protocol messages appended to events.log",
+  "type": "object",
+  "required": ["type", "agent", "timestamp"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "register",
+        "intent",
+        "lock",
+        "release",
+        "update",
+        "complete",
+        "wait",
+        "block",
+        "resolve",
+        "notify",
+        "request",
+        "ack"
+      ],
+      "description": "Message type"
+    },
+    "agent": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "description": "Agent identifier (kebab-case)"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp"
+    },
+    "data": {
+      "type": "object",
+      "description": "Type-specific payload"
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "const": "register" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "required": ["role"],
+            "properties": {
+              "role": { "type": "string", "enum": ["developer", "reviewer", "ops", "architect"] },
+              "public_key": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "intent" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "required": ["task", "branch"],
+            "properties": {
+              "task": { "type": "string" },
+              "branch": { "type": "string" },
+              "resources": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "lock" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "required": ["resource", "reason"],
+            "properties": {
+              "resource": { "type": "string" },
+              "reason": { "type": "string" },
+              "ttl_minutes": { "type": "integer", "minimum": 1, "maximum": 120 }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "release" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "required": ["resource"],
+            "properties": {
+              "resource": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "update" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "required": ["task"],
+            "properties": {
+              "task": { "type": "string" },
+              "progress": { "type": "string" },
+              "details": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "complete" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "required": ["task", "branch"],
+            "properties": {
+              "task": { "type": "string" },
+              "branch": { "type": "string" },
+              "summary": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "wait" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "required": ["resource", "held_by"],
+            "properties": {
+              "resource": { "type": "string" },
+              "held_by": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "block" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "required": ["reason"],
+            "properties": {
+              "reason": { "type": "string" },
+              "affected_resources": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "resolve" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "required": ["reference", "resolution"],
+            "properties": {
+              "reference": { "type": "string" },
+              "resolution": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "notify" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "required": ["message"],
+            "properties": {
+              "message": { "type": "string" },
+              "severity": { "type": "string", "enum": ["info", "warning", "critical"] }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "request" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "required": ["to", "action"],
+            "properties": {
+              "to": { "type": "string" },
+              "action": { "type": "string" },
+              "reason": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "ack" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "required": ["reference", "accepted"],
+            "properties": {
+              "reference": { "type": "string", "description": "Format: agent:type:timestamp" },
+              "accepted": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

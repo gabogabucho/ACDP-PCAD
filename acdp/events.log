@@ -1,8 +1,12 @@
-[2026-04-09T22:00:00-03:00] REGISTERED agent:agent-alpha — Agent registered with role=developer. Approved by project-owner.
-[2026-04-09T22:05:00-03:00] REGISTERED agent:agent-beta — Agent registered with role=developer. Approved by project-owner.
-[2026-04-09T22:10:00-03:00] REGISTERED agent:agent-gamma — Agent registered with role=ops. Approved by project-owner.
-[2026-04-09T23:00:00-03:00] INTENT_DECLARED agent:agent-alpha — Will implement user dashboard components. Branch: agent/agent-alpha/user-dashboard
-[2026-04-09T23:05:00-03:00] INTENT_DECLARED agent:agent-beta — Will add user profile API endpoints. Branch: agent/agent-beta/user-profile-api
-[2026-04-10T00:15:00-03:00] LOCK_ACQUIRED agent:agent-alpha — Locked resource: src/frontend/pages/. Reason: building dashboard views. TTL: 30min.
-[2026-04-10T00:20:00-03:00] LOCK_ACQUIRED agent:agent-alpha — Locked resource: src/api/routes/auth.ts. Reason: integrating auth flow into dashboard. TTL: 30min.
-[2026-04-10T00:22:00-03:00] AGENT_WAITING agent:agent-beta — Waiting for lock on src/api/routes/. Resource held by agent-alpha.
+{"type":"register","agent":"agent-alpha","timestamp":"2026-04-09T22:00:00-03:00","data":{"role":"developer","public_key":"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKxGHn7a1b2c3d4e5f6g7h8i9j0kLmNoPqRsTuVwXyZ"}}
+{"type":"register","agent":"agent-beta","timestamp":"2026-04-09T22:05:00-03:00","data":{"role":"developer","public_key":"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBzYxW9a8b7c6d5e4f3g2h1i0j9kMnOpQrStUvWxYz"}}
+{"type":"register","agent":"agent-gamma","timestamp":"2026-04-09T22:10:00-03:00","data":{"role":"ops","public_key":"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICaAbBcCdDeEfFgGhHiIjJkKlLmMnNoOpPqQrRsStT"}}
+{"type":"intent","agent":"agent-alpha","timestamp":"2026-04-09T23:00:00-03:00","data":{"task":"Implement user dashboard components","branch":"agent/agent-alpha/user-dashboard","resources":["src/frontend/pages/","src/api/routes/auth.ts"]}}
+{"type":"intent","agent":"agent-beta","timestamp":"2026-04-09T23:05:00-03:00","data":{"task":"Add user profile API endpoints","branch":"agent/agent-beta/user-profile-api","resources":["src/api/routes/users.ts","src/db/models/user.ts"]}}
+{"type":"lock","agent":"agent-alpha","timestamp":"2026-04-10T00:15:00-03:00","data":{"resource":"src/frontend/pages/","reason":"Building dashboard views","ttl_minutes":30}}
+{"type":"lock","agent":"agent-alpha","timestamp":"2026-04-10T00:20:00-03:00","data":{"resource":"src/api/routes/auth.ts","reason":"Integrating auth flow into dashboard","ttl_minutes":30}}
+{"type":"wait","agent":"agent-beta","timestamp":"2026-04-10T00:22:00-03:00","data":{"resource":"src/api/routes/","held_by":"agent-alpha"}}
+{"type":"request","agent":"agent-beta","timestamp":"2026-04-10T00:25:00-03:00","data":{"to":"agent-alpha","action":"release lock on src/api/routes/auth.ts","reason":"Need access to api/routes/ for user profile endpoints"}}
+{"type":"ack","agent":"agent-alpha","timestamp":"2026-04-10T00:26:00-03:00","data":{"reference":"agent-beta:request:2026-04-10T00:25:00-03:00","accepted":true}}
+{"type":"release","agent":"agent-alpha","timestamp":"2026-04-10T00:27:00-03:00","data":{"resource":"src/api/routes/auth.ts"}}
+{"type":"notify","agent":"agent-alpha","timestamp":"2026-04-10T00:27:30-03:00","data":{"message":"Released auth.ts lock — agent-beta can proceed with api/routes/","severity":"info"}}

@@ -75,6 +75,10 @@ Las acciones relevantes se registran en un log secuencial de solo lectura (appen
 
 Los módulos, sus dueños, áreas restringidas y reglas de coordinación entre módulos se definen explícitamente.
 
+### Comunicación entre agentes
+
+Toda la coordinación entre agentes ocurre mediante mensajes JSON estructurados que se agregan a `events.log`. El protocolo define 12 tipos de mensaje (`register`, `intent`, `lock`, `release`, `update`, `complete`, `wait`, `block`, `resolve`, `notify`, `request`, `ack`) con un schema formal para validación.
+
 ### Gobernanza
 
 Se definen reglas sobre quién puede participar, cómo se toman decisiones y quién puede sobreescribir locks.
@@ -91,10 +95,11 @@ ACDP se implementa dentro del repositorio mediante una estructura estándar:
   architecture.md        # Mapa de módulos y ownership
   state.md               # Snapshot del estado actual
   agents.md              # Registro de agentes activos
-  events.log             # Log secuencial de acciones
+  events.log             # Log JSON estructurado de mensajes
   locks.json             # Locks activos sobre recursos
   governance.json        # Reglas de autoridad y override
   agents.registry.json   # Definición de agentes confiables
+  messages.schema.json   # JSON Schema para validación de mensajes
 ```
 
 ---
@@ -113,10 +118,11 @@ ACDP se implementa dentro del repositorio mediante una estructura estándar:
                 │   │                          │   │
                 │   │  protocol.md             │   │
                 │   │  architecture.md         │   │
+                │   │  messages.schema.json    │   │
                 │   │  state.md                │◄──────────┐
                 │   │  agents.md               │◄───────┐  │
                 │   │  locks.json              │◄────┐  │  │
-                │   │  events.log              │◄──┐ │  │  │
+                │   │  events.log (JSON)       │◄──┐ │  │  │
                 │   │  governance.json         │   │ │  │  │
                 │   │  agents.registry.json    │   │ │  │  │
                 │   │                          │   │ │  │  │
