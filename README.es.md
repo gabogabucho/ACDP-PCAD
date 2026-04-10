@@ -237,14 +237,20 @@ ACDP ahora soporta una fase inicial de coordinación remote-first sobre Git.
 Comandos útiles:
 
 - `node acdp/cli.js sync` — obtiene y reporta el head actual de coordinación remota cuando existe.
-- `node acdp/cli.js status --remote` — muestra disponibilidad de coordinación remota, revisión actual, cantidad de locks y si los archivos ACDP locales están stale respecto del remoto.
+- `node acdp/cli.js status --remote` — muestra disponibilidad de coordinación remota, revisión actual, salud del remoto autoritativo, divergencia esperada de feature branches, señales de snapshot de coordinación stale y diferencias locales contra la rama autoritativa.
 - `node acdp/cli.js status --remote --json` — la misma información en formato machine-readable.
 - `node acdp/cli.js lock-remote "src/file.js" file "Implementar feature" 30` — adquiere o renueva un lock en `origin/acdp/state`, con retry acotado ante carreras por cambio de head remoto.
 - `node acdp/cli.js release-remote "src/file.js" "Feature completo"` — libera un lock remoto y agrega eventos de ciclo de vida compatibles en la rama de coordinación.
 - `node acdp/cli.js renew "src/file.js" 45` — renueva de forma explícita un lock existente por recurso o por `lock_id`; en modo remoto preserva `lock_id` y actualiza `base_coord_rev`.
 - `node acdp/cli.js cleanup-remote` — elimina de forma segura solo los locks que siguen expirados sobre la última base remota y emite eventos `release` compatibles con `expired: true`.
 - `node acdp/cli.js heartbeat "sigo trabajando"` — agrega un `update` liviano y schema-compatible como señal de vida, usando la rama remota cuando existe.
-- `node acdp/cli.js doctor --json` — informa readiness remota, salud de la rama actual, sanidad de archivos del protocolo y locks del agente actual.
+- `node acdp/cli.js doctor --json` — informa readiness remota, salud de la rama actual, sanidad de archivos del protocolo, errores de parseo del remoto autoritativo y locks del agente actual. Devuelve exit code distinto de cero cuando falla la salud.
+
+Notas de observabilidad remota:
+
+- `local_stale` se mantiene en la salida JSON como alias backward-compatible de `local_protocol_differs_from_remote`.
+- La divergencia esperada entre una feature branch y `acdp/state` ahora se reporta separada de un snapshot de coordinación realmente stale.
+- Si `locks.json` o `events.log` autoritativos en `origin/acdp/state` están malformados, los comandos de observabilidad lo informan explícitamente y la salud falla en lugar de tratarlos silenciosamente como vacíos.
 
 El flujo endurecido mantiene intencionalmente `locks.json` y `events.log` como archivos canónicos de coordinación; el cambio está en *dónde* se publican y *cómo* la tooling prueba frescura.
 

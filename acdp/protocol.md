@@ -396,6 +396,8 @@ When `origin/acdp/state` exists, this hierarchy applies to the files on that bra
 - Expired-lock cleanup in remote-first mode MUST re-read the latest coordination branch before publication and MUST only remove locks still expired on that refreshed base.
 - Cleanup release events remain schema-compatible and SHOULD carry `expired: true`, `lock_id` when known, and remote coordination metadata such as `base_coord_rev`.
 - Tooling SHOULD provide a doctor/readiness command that reports whether `origin/acdp/state` exists, whether local coordination files differ from the remote branch, whether protocol files are parseable enough to operate, and which active locks are held by the current agent.
+- In remote-first mode, observability SHOULD distinguish between expected feature-branch divergence, a stale mirrored coordination snapshot on the current branch, and local protocol file edits that currently differ from the authoritative remote state.
+- If authoritative `locks.json` or `events.log` on `origin/acdp/state` are malformed or unparseable, observability tooling MUST surface that explicitly and MUST fail health instead of silently treating those files as empty.
 
 ### state.md
 

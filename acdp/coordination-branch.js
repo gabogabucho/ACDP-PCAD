@@ -8,6 +8,16 @@ const COORDINATION_BRANCH = 'acdp/state';
 const COORDINATION_REF = `refs/remotes/${REMOTE_NAME}/${COORDINATION_BRANCH}`;
 const DEFAULT_COORD_FILES = ['locks.json', 'events.log', 'agents.md', 'state.md', 'governance.json'];
 
+function createHealthEntry(file, overrides = {}) {
+  return {
+    file,
+    exists: true,
+    parseable: true,
+    ok: true,
+    ...overrides
+  };
+}
+
 function getRepoRoot(acdpDir) {
   try {
     return runGit(acdpDir, ['rev-parse', '--show-toplevel']);
@@ -106,6 +116,97 @@ function parseEvents(content) {
     .filter(Boolean);
 }
 
+function inspectRemoteLocksDocument(repoRoot, ref) {
+  const file = 'locks.json';
+  const content = readTreeFile(repoRoot, ref, file, null);
+
+  if (content === null) {
+    return {
+      document: { locks: [] },
+      health: createHealthEntry(file, {
+        exists: false,
+        parseable: false,
+        ok: false,
+        error: 'missing from authoritative remote coordination branch'
+      })
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(content);
+    if (Array.isArray(parsed)) {
+      return {
+        document: { locks: parsed },
+        health: createHealthEntry(file, { canonical_shape: 'legacy-array' })
+      };
+    }
+
+    if (parsed && typeof parsed === 'object' && Array.isArray(parsed.locks)) {
+      return {
+        document: { locks: parsed.locks },
+        health: createHealthEntry(file, { canonical_shape: 'object' })
+      };
+    }
+
+    return {
+      document: { locks: [] },
+      health: createHealthEntry(file, {
+        ok: false,
+        error: 'parseable JSON but not a valid lock document; expected {"locks": [...]} or a legacy array'
+      })
+    };
+  } catch (error) {
+    return {
+      document: { locks: [] },
+      health: createHealthEntry(file, {
+        parseable: false,
+        ok: false,
+        error: `invalid JSON: ${error.message}`
+      })
+    };
+  }
+}
+
+function inspectRemoteEventsLog(repoRoot, ref) {
+  const file = 'events.log';
+  const content = readTreeFile(repoRoot, ref, file, null);
+
+  if (content === null) {
+    return {
+      events: [],
+      health: createHealthEntry(file, {
+        exists: false,
+        parseable: false,
+        ok: false,
+        error: 'missing from authoritative remote coordination branch'
+      })
+    };
+  }
+
+  const lines = String(content).split(/\r?\n/).filter(Boolean);
+  const events = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    try {
+      events.push(JSON.parse(lines[index]));
+    } catch (error) {
+      return {
+        events: [],
+        health: createHealthEntry(file, {
+          parseable: false,
+          ok: false,
+          error: `invalid JSONL at line ${index + 1}`
+        })
+      };
+    }
+  }
+
+  return {
+    events,
+    health: createHealthEntry(file)
+  };
+}
+
 function getLocalFileContent(repoRoot, relativePath) {
   const filePath = path.join(repoRoot, 'acdp', relativePath);
   return fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : null;
@@ -122,6 +223,9 @@ function loadRemoteCoordinationSnapshot(repoRoot) {
     };
   }
 
+  const remoteLocks = inspectRemoteLocksDocument(repoRoot, coordination.ref);
+  const remoteEvents = inspectRemoteEventsLog(repoRoot, coordination.ref);
+
   const localStaleness = DEFAULT_COORD_FILES.some(file => {
     const remoteContent = readTreeFile(repoRoot, coordination.ref, file, null);
     const localContent = getLocalFileContent(repoRoot, file);
@@ -130,20 +234,28 @@ function loadRemoteCoordinationSnapshot(repoRoot) {
 
   return {
     ...coordination,
-    locksDocument: readJsonTreeFile(repoRoot, coordination.ref, 'locks.json', { locks: [] }),
-    events: parseEvents(readTreeFile(repoRoot, coordination.ref, 'events.log', '')),
-    local_stale: localStaleness
+    locksDocument: remoteLocks.document,
+    events: remoteEvents.events,
+    local_stale: localStaleness,
+    coordinationHealth: {
+      ok: remoteLocks.health.ok && remoteEvents.health.ok,
+      files: {
+        'locks.json': remoteLocks.health,
+        'events.log': remoteEvents.health
+      },
+      errors: [remoteLocks.health, remoteEvents.health]
+        .filter(entry => !entry.ok)
+        .map(entry => `${entry.file}: ${entry.error}`)
+    }
   };
 }
 
 function createTempWorktree(repoRoot, baseRef) {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'acdp-state-'));
-  const branchName = `acdp-state-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   runGit(repoRoot, ['worktree', 'add', '--detach', tempDir, baseRef]);
-  runGit(tempDir, ['switch', '-c', branchName]);
 
-  return { tempDir, branchName };
+  return { tempDir };
 }
 
 function removeTempWorktree(repoRoot, tempDir) {
@@ -170,6 +282,10 @@ function publishRemoteMutation(options) {
 
     if (!snapshot.available) {
       return { mode: 'legacy', available: false, retries: attempt - 1 };
+    }
+
+    if (snapshot.coordinationHealth && !snapshot.coordinationHealth.ok) {
+      throw new Error(`Authoritative remote coordination state is unhealthy: ${snapshot.coordinationHealth.errors.join('; ')}`);
     }
 
     const baseCoordRev = snapshot.revision;
@@ -220,8 +336,14 @@ function publishRemoteMutation(options) {
       const stdout = String(error.stdout || '');
       const combined = `${stderr}\n${stdout}`;
 
-      if (!/non-fast-forward|fetch first|rejected/i.test(combined) || attempt === maxRetries) {
+      if (!/non-fast-forward|fetch first|rejected/i.test(combined)) {
         throw new Error(combined.trim() || error.message);
+      }
+
+      if (attempt === maxRetries) {
+        const latestSnapshot = loadRemoteCoordinationSnapshot(repoRoot);
+        const latestRef = latestSnapshot.available ? `${REMOTE_NAME}/${COORDINATION_BRANCH} @ ${latestSnapshot.revision}` : `${REMOTE_NAME}/${COORDINATION_BRANCH}`;
+        throw new Error(`Remote coordination branch kept changing while publishing '${summary}'. Refresh from ${latestRef}, inspect the current authoritative state, and retry manually if the operation still makes sense.`);
       }
     } finally {
       removeTempWorktree(repoRoot, tempDir);
