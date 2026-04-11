@@ -1,4 +1,4 @@
-<img width="1019" height="576" alt="image" src="https://github.com/user-attachments/assets/1817f6cf-0c21-4df6-b0ac-e0eb37dd263d" />
+<img width="767" height="422" alt="image" src="https://github.com/user-attachments/assets/50df421e-2287-4eb9-a654-1e360c29497f" />
 
 
 # ACDP — Agent Coordination Protocol for Development
