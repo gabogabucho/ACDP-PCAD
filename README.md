@@ -215,8 +215,10 @@ Agents can execute protocol-safe operations natively:
 - `node acdp/cli.js status`
 - `node acdp/cli.js cleanup` (Removes expired locks and emits schema-compliant `release` events with `data.expired: true`.)
 - `node acdp/cli.js batch "refresh-cache" "src/cache/data.json" 5 file` (For short scripted intent → lock → release flows.)
-- `node acdp/cli.js finish` (Globally declares the project explicitly finished.)
+- `node acdp/cli.js finish [--json] [--offline]` (Globally declares the project explicitly finished; remote-aware when `origin/acdp/state` exists.)
 - `node acdp/cli.js watch` (Spawns a real-time terminal radar and shows lock TTL context when relevant.)
+- `node acdp/cli.js subscribe` (Streams raw JSONL events to stdout; exits on SIGINT. Useful for MCP/A2A integration.)
+- `node acdp/cli.js override-release <agent-id> [--json]` (Maintainer-only: force-releases all locks held by the specified agent.)
 - `node acdp/export-logs.js` (Exports `events.log` to a gzip archive under `acdp/log-exports/`, which is ignored by Git.)
 
 The CLI keeps protocol artifacts aligned with the documented format:
@@ -311,9 +313,9 @@ For remote-first operator scenarios such as reconnects, stale snapshots, same-re
 
 ## Project Status
 
-Version: v0.1 (experimental)
+Version: v0.2.0
 
-ACDP is in its initial stage, oriented toward practical validation in real environments.
+ACDP is in active development. See [CHANGELOG.md](CHANGELOG.md) for release notes and [docs/roadmap.md](docs/roadmap.md) for planned features.
 
 ---
 

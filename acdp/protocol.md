@@ -1,6 +1,6 @@
 # ACDP — Agent Coordination Protocol for Development
 
-**Version:** 1.3.0
+**Version:** see [VERSION](../VERSION) file — current release: 0.2.0
 **Status:** Active
 
 ## Overview
@@ -22,12 +22,12 @@ Remote hardening adds an optional remote-first coordination mode over Git. When 
 
 ## Coordination Modes
 
-ACDP supports two compatible coordination modes:
+As of v0.2, ACDP is **remote-first**. `lock-remote` and `release-remote` require `origin/acdp/state` to exist and will fail with an explicit error if it does not. Use `--offline` for read-only inspection when the remote is unavailable.
 
 | Mode | When it applies | Source of coordination truth |
 |------|------------------|------------------------------|
-| Legacy local mode | `origin/acdp/state` is absent | The current branch's `acdp/` files under the existing rules |
-| Remote-first mode | `origin/acdp/state` exists | `origin/acdp/state` for shared coordination state |
+| Remote-first (default) | `origin/acdp/state` exists | `origin/acdp/state` for all coordination mutations |
+| Offline / local | `--offline` flag or legacy local commands | The current branch's `acdp/` files |
 
 ### Remote-first mode
 
@@ -259,11 +259,9 @@ Hierarchy rules:
 
 ### Wait Queue
 
-If a lock is held by another agent:
+CLI-based wait queue is deferred to v0.3. See [docs/roadmap.md](../docs/roadmap.md).
 
-1. The requesting agent sets its status to `waiting` in `agents.md`.
-2. A `wait` message is appended to `events.log`.
-3. The agent polls `locks.json` until the resource is free.
+The `wait` message type remains valid — agents may append it manually to signal waiting.
 
 ---
 
@@ -331,9 +329,11 @@ If a merge conflict occurs on an ACDP file (not project code):
 2. If both agents have locks on different files within the same module, they must coordinate via `events.log` using `request` and `ack` messages.
 3. If a `request` receives `ack` with `accepted: false`, the requesting agent must: (a) wait and retry, (b) send another `request` with more context, or (c) escalate to a maintainer. Maximum 3 retries before escalation is mandatory.
 4. If resolution fails, escalate to a maintainer (defined in `governance.json` → `conflict_resolution.escalation_chain`).
-5. The maintainer may force-release locks and assign resolution priority. After a lock override, a cooldown period applies (defined in `governance.json` → `lock_override.cooldown_minutes`).
+5. A maintainer may use `node acdp/cli.js override-release <agent-id>` to force-release all locks held by an offline or blocked agent. After a lock override, a cooldown period applies (defined in `governance.json` → `lock_override.cooldown_minutes`).
 6. Total resolution time must not exceed `governance.json` → `conflict_resolution.max_resolution_time_minutes`.
 7. Once resolved, append a `resolve` message to `events.log`.
+
+> **CLI note**: `block` and `resolve` CLI commands are deferred to v0.3. See [docs/roadmap.md](../docs/roadmap.md). The message types remain valid and agents may append them manually.
 
 ### Remote-first retry rules
 

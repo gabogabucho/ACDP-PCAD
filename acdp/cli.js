@@ -317,26 +317,12 @@ function describeLockHolder(lock) {
   return details.join(', ');
 }
 
-function isWithinDirectory(resource, directory) {
-  const normalizedResource = resource.replace(/\\/g, '/');
-  const normalizedDirectory = directory.endsWith('/') ? directory : `${directory}/`;
-  return normalizedResource.startsWith(normalizedDirectory);
-}
-
-function locksConflict(candidate, existing) {
-  if (candidate.resource === existing.resource) {
-    return true;
-  }
-
-  if (candidate.scope === 'directory' && isWithinDirectory(existing.resource, candidate.resource)) {
-    return true;
-  }
-
-  if (existing.scope === 'directory' && isWithinDirectory(candidate.resource, existing.resource)) {
-    return true;
-  }
-
-  return false;
+function buildEventData(resource, lockId, branch, baseCoordRev) {
+  const data = { resource };
+  if (lockId != null) data.lock_id = lockId;
+  if (branch != null) data.branch = branch;
+  if (baseCoordRev != null) data.base_coord_rev = baseCoordRev;
+  return data;
 }
 
 function findConflictingLock(locks, resource, scope, agentId) {
@@ -348,7 +334,7 @@ function findConflictingLock(locks, resource, scope, agentId) {
       return false;
     }
 
-    return locksConflict({ resource: normalizedResource, scope: normalizedScope }, lock);
+    return lockManager.locksConflict({ resource: normalizedResource, scope: normalizedScope }, lock);
   }) || null;
 }
 
@@ -410,7 +396,7 @@ function summarizeRemoteStatus(snapshot) {
   };
 }
 
-function lockResource(resource, scope, reason, ttlMinutes) {
+function lockResource(resource, scope, reason, ttlMinutes, options = {}) {
   cleanupExpiredLocks({ logEvents: true });
 
   const branch = getCurrentBranch();
@@ -433,20 +419,20 @@ function lockResource(resource, scope, reason, ttlMinutes) {
     ...(result.renewal ? { renewal: true } : {})
   });
 
-  console.log(
-    `[ACDP] ${result.renewal ? 'Renewed' : 'Locked'} '${result.lock.resource}' until ${result.lock.expires_at}.`
-  );
+  if (options.json) {
+    console.log(JSON.stringify({ status: result.renewal ? 'renewed' : 'locked', lock_id: result.lock.lock_id || null, resource: result.lock.resource, ttl_minutes: result.ttlMinutes, base_coord_rev: null }));
+  } else {
+    console.log(`[ACDP] ${result.renewal ? 'Renewed' : 'Locked'} '${result.lock.resource}' until ${result.lock.expires_at}.`);
+  }
 }
 
-function lockRemoteResource(resource, scope, reason, ttlMinutes) {
+function lockRemoteResource(resource, scope, reason, ttlMinutes, options = {}) {
   const branch = getCurrentBranch();
   const task = reason || `Work on ${resource}`;
   const snapshot = getCoordinationSnapshot();
 
   if (!snapshot.available) {
-    console.log('[ACDP] Remote coordination branch not found; falling back to legacy local mode.');
-    lockResource(resource, scope, task, ttlMinutes);
-    return;
+    throw new Error('ACDP remote unreachable. Use --offline for read-only mode.');
   }
 
   const result = coordinationBranch.publishRemoteMutation({
@@ -458,6 +444,7 @@ function lockRemoteResource(resource, scope, reason, ttlMinutes) {
       const governanceJson = path.join(acdpDir, 'governance.json');
       const eventsLog = path.join(acdpDir, 'events.log');
 
+      lockManager.cleanupExpiredLocks({ locksJson, governanceJson });
       const currentLocks = lockManager.loadLocks({ locksJson, governanceJson });
       const conflictingLock = findConflictingLock(currentLocks, resource, scope, getAgentId());
       if (conflictingLock) {
@@ -517,10 +504,14 @@ function lockRemoteResource(resource, scope, reason, ttlMinutes) {
     return;
   }
 
-  console.log(
-    `[ACDP] ${result.renewal ? 'Renewed' : 'Locked'} '${result.resource}' on ${coordinationBranch.REMOTE_NAME}/${coordinationBranch.COORDINATION_BRANCH} until ${result.expiresAt}.`
-  );
-  console.log(`[ACDP] base_coord_rev=${String(result.baseCoordRev).slice(0, 12)} resulting_coord_rev=${String(result.resultingCoordRev).slice(0, 12)} retries=${result.retries}`);
+  if (options.json) {
+    console.log(JSON.stringify({ status: result.renewal ? 'renewed' : 'locked', lock_id: result.lockId || null, resource: result.resource, ttl_minutes: result.ttlMinutes || null, base_coord_rev: result.baseCoordRev || null }));
+  } else {
+    console.log(
+      `[ACDP] ${result.renewal ? 'Renewed' : 'Locked'} '${result.resource}' on ${coordinationBranch.REMOTE_NAME}/${coordinationBranch.COORDINATION_BRANCH} until ${result.expiresAt}.`
+    );
+    console.log(`[ACDP] base_coord_rev=${String(result.baseCoordRev).slice(0, 12)} resulting_coord_rev=${String(result.resultingCoordRev).slice(0, 12)} retries=${result.retries}`);
+  }
 }
 
 function renewResource(identifier, ttlMinutes) {
@@ -651,7 +642,7 @@ function renewRemoteResource(identifier, ttlMinutes, prefetchedSnapshot = null) 
   console.log(`[ACDP] lock_id=${result.lockId} base_coord_rev=${String(result.baseCoordRev).slice(0, 12)} resulting_coord_rev=${String(result.resultingCoordRev).slice(0, 12)} retries=${result.retries}`);
 }
 
-function releaseResource(resource, summary = 'Task completed') {
+function releaseResource(resource, summary = 'Task completed', options = {}) {
   const result = lockManager.releaseLock(resource, { agentId: getAgentId() });
 
   if (!result.released) {
@@ -662,17 +653,22 @@ function releaseResource(resource, summary = 'Task completed') {
     throw new Error(`No lock found for resource '${resource}'.`);
   }
 
-  appendEvent('release', { resource: result.lock.resource });
+  const branch = getCurrentBranch();
+  appendEvent('release', buildEventData(result.lock.resource, result.lock.lock_id, branch, null));
   appendEvent('complete', {
     task: result.lock.reason || `Work on ${result.lock.resource}`,
-    branch: getCurrentBranch(),
+    branch,
     summary
   });
 
-  console.log(`[ACDP] Released '${result.lock.resource}'.`);
+  if (options.json) {
+    console.log(JSON.stringify({ status: 'released', resource: result.lock.resource, lock_id: result.lock.lock_id || null }));
+  } else {
+    console.log(`[ACDP] Released '${result.lock.resource}'.`);
+  }
 }
 
-function releaseRemoteResource(resource, summary = 'Task completed') {
+function releaseRemoteResource(resource, summary = 'Task completed', options = {}) {
   const branch = getCurrentBranch();
   const snapshot = getCoordinationSnapshot();
 
@@ -738,8 +734,12 @@ function releaseRemoteResource(resource, summary = 'Task completed') {
     return;
   }
 
-  console.log(`[ACDP] Released '${result.resource}' on ${coordinationBranch.REMOTE_NAME}/${coordinationBranch.COORDINATION_BRANCH}.`);
-  console.log(`[ACDP] base_coord_rev=${String(result.baseCoordRev).slice(0, 12)} resulting_coord_rev=${String(result.resultingCoordRev).slice(0, 12)} retries=${result.retries}`);
+  if (options.json) {
+    console.log(JSON.stringify({ status: 'released', resource: result.resource, lock_id: result.lockId || null }));
+  } else {
+    console.log(`[ACDP] Released '${result.resource}' on ${coordinationBranch.REMOTE_NAME}/${coordinationBranch.COORDINATION_BRANCH}.`);
+    console.log(`[ACDP] base_coord_rev=${String(result.baseCoordRev).slice(0, 12)} resulting_coord_rev=${String(result.resultingCoordRev).slice(0, 12)} retries=${result.retries}`);
+  }
 }
 
 function cleanupRemoteExpiredLocks() {
@@ -1039,27 +1039,170 @@ function syncCoordination(options = {}) {
   console.log(`[ACDP] Active locks: ${status.active_lock_count}. ${remoteHealthSummary}. Expected branch divergence: ${status.expected_branch_divergence ? 'yes' : 'no'}. Stale snapshot: ${status.stale_coordination_snapshot ? 'yes' : 'no'}. Local protocol differs: ${status.local_protocol_differs_from_remote ? 'yes' : 'no'}.`);
 }
 
-function markFinished() {
-  let content = 'No state file found.';
-  if (fs.existsSync(STATE_MD)) {
-    content = fs.readFileSync(STATE_MD, 'utf8');
+function markFinished(options = {}) {
+  const branch = getCurrentBranch();
+  const snapshot = getCoordinationSnapshot();
+
+  const applyDoneToStateMd = (stateDir) => {
+    const stateMd = path.join(stateDir, 'state.md');
+    let content = 'No state file found.';
+    if (fs.existsSync(stateMd)) {
+      content = fs.readFileSync(stateMd, 'utf8');
+    }
+    content += '\n\n**Status: DONE**\nAll project operations have officially concluded. Agents should cease task initialization and exit immediately.';
+    fs.writeFileSync(stateMd, content);
+  };
+
+  if (snapshot.available && !options.offline) {
+    const result = coordinationBranch.publishRemoteMutation({
+      repoRoot: REPO_ROOT,
+      agentId: getAgentId(),
+      summary: 'acdp(remote): finish — project concluded',
+      mutate: ({ acdpDir, baseCoordRev }) => {
+        const eventsLog = path.join(acdpDir, 'events.log');
+        applyDoneToStateMd(acdpDir);
+
+        appendEvent('intent', {
+          task: 'Owner invoked global finish',
+          branch,
+          resources: ['acdp/state.md'],
+          base_coord_rev: baseCoordRev
+        }, { eventsLog, silent: true });
+        appendEvent('complete', {
+          task: 'Project lifecycle completion',
+          branch,
+          summary: 'Project concluded gracefully via PCAD Finish.',
+          base_coord_rev: baseCoordRev
+        }, { eventsLog, silent: true });
+
+        return {};
+      }
+    });
+
+    if (options.json) {
+      console.log(JSON.stringify({ status: 'done', coord_rev: result.resultingCoordRev || result.baseCoordRev || null }));
+    } else {
+      console.log('[ACDP] Project successfully marked as DONE on remote coordination branch.');
+      console.log(`[ACDP] base_coord_rev=${String(result.baseCoordRev).slice(0, 12)} resulting_coord_rev=${String(result.resultingCoordRev).slice(0, 12)} retries=${result.retries}`);
+    }
+    return;
   }
 
-  content += '\n\n**Status: DONE**\nAll project operations have officially concluded. Agents should cease task initialization and exit immediately.';
-  fs.writeFileSync(STATE_MD, content);
-
+  applyDoneToStateMd(ACDP_DIR);
   appendEvent('intent', {
     task: 'Owner invoked global finish',
-    branch: getCurrentBranch(),
+    branch,
     resources: ['acdp/state.md']
   });
   appendEvent('complete', {
     task: 'Project lifecycle completion',
-    branch: getCurrentBranch(),
+    branch,
     summary: 'Project concluded gracefully via PCAD Finish.'
   });
 
-  console.log('[ACDP] Project successfully marked as DONE. Environment is finalized.');
+  if (options.json) {
+    console.log(JSON.stringify({ status: 'done', coord_rev: null }));
+  } else {
+    console.log('[ACDP] Project successfully marked as DONE. Environment is finalized.');
+  }
+}
+
+function overrideRelease(agentId, options = {}) {
+  if (!agentId) {
+    throw new Error('Usage: node acdp/cli.js override-release <agent-id>');
+  }
+
+  const callerId = getAgentId();
+  const governance = JSON.parse(fs.readFileSync(path.join(ACDP_DIR, 'governance.json'), 'utf8'));
+
+  if (!governance.maintainers || !governance.maintainers.includes(callerId)) {
+    throw new Error(`Agent '${callerId}' is not a maintainer. override-release requires maintainer authority (see acdp/governance.json).`);
+  }
+
+  const snapshot = getCoordinationSnapshot();
+  const branch = getCurrentBranch();
+
+  if (snapshot.available) {
+    const result = coordinationBranch.publishRemoteMutation({
+      repoRoot: REPO_ROOT,
+      agentId: callerId,
+      summary: `acdp(remote): override-release all locks for ${agentId}`,
+      mutate: ({ acdpDir, baseCoordRev }) => {
+        const locksJson = path.join(acdpDir, 'locks.json');
+        const governanceJson = path.join(acdpDir, 'governance.json');
+        const eventsLog = path.join(acdpDir, 'events.log');
+        const allLocks = lockManager.loadLocks({ locksJson, governanceJson });
+        const targetLocks = allLocks.filter(lock => lock.agent_id === agentId);
+        const resources = [];
+
+        targetLocks.forEach(lock => {
+          lockManager.releaseLock(lock.resource, { agentId, locksJson, governanceJson, allowForeignRelease: true });
+          appendEvent('release', {
+            resource: lock.resource,
+            branch: lock.branch || branch,
+            lock_id: lock.lock_id,
+            base_coord_rev: baseCoordRev,
+            override: true
+          }, { eventsLog, silent: true });
+          resources.push(lock.resource);
+        });
+
+        return { count: targetLocks.length, resources };
+      }
+    });
+
+    if (options.json) {
+      console.log(JSON.stringify({ status: 'ok', agent: agentId, locks_released: result.count || 0, resources: result.resources || [] }));
+    } else {
+      console.log(`[ACDP] Override-released ${result.count || 0} lock(s) for '${agentId}' on ${coordinationBranch.REMOTE_NAME}/${coordinationBranch.COORDINATION_BRANCH}.`);
+    }
+    return;
+  }
+
+  const allLocks = lockManager.loadLocks();
+  const targetLocks = allLocks.filter(lock => lock.agent_id === agentId);
+  const resources = [];
+
+  targetLocks.forEach(lock => {
+    lockManager.releaseLock(lock.resource, { agentId, allowForeignRelease: true });
+    appendEvent('release', {
+      resource: lock.resource,
+      branch: lock.branch || branch,
+      lock_id: lock.lock_id,
+      override: true
+    });
+    resources.push(lock.resource);
+  });
+
+  if (options.json) {
+    console.log(JSON.stringify({ status: 'ok', agent: agentId, locks_released: targetLocks.length, resources }));
+  } else {
+    console.log(`[ACDP] Override-released ${targetLocks.length} lock(s) for '${agentId}' locally.`);
+  }
+}
+
+function subscribe() {
+  ensureEventsLogExists();
+
+  let lastSize = fs.statSync(EVENTS_LOG).size;
+
+  fs.watchFile(EVENTS_LOG, { interval: 2000 }, curr => {
+    if (curr.size <= lastSize) return;
+
+    const stream = fs.createReadStream(EVENTS_LOG, { start: lastSize, end: curr.size });
+    stream.on('data', chunk => {
+      chunk.toString().split('\n').filter(line => line.trim().length > 0).forEach(line => {
+        process.stdout.write(line + '\n');
+      });
+    });
+
+    lastSize = curr.size;
+  });
+
+  process.on('SIGINT', () => {
+    fs.unwatchFile(EVENTS_LOG);
+    process.exit(0);
+  });
 }
 
 function describeEvent(log) {
@@ -1143,38 +1286,50 @@ function watchLogs() {
 }
 
 function printUsage() {
-  console.log(`ACDP CLI Tools
+  console.log(`ACDP CLI Tools — v${require('fs').existsSync(require('path').join(__dirname, '..', 'VERSION')) ? require('fs').readFileSync(require('path').join(__dirname, '..', 'VERSION'), 'utf8').trim() : '?'}
 Usage:
-  node acdp/cli.js lock <resource> [scope] [reason] [ttlMinutes]
+  node acdp/cli.js lock <resource> [scope] [reason] [ttlMinutes] [--json]
   node acdp/cli.js renew <resource|lock-id> [ttlMinutes]
-  node acdp/cli.js release <resource> [summary]
-  node acdp/cli.js lock-remote <resource> [scope] [reason] [ttlMinutes]
-  node acdp/cli.js release-remote <resource> [summary]
+  node acdp/cli.js release <resource> [summary] [--json]
+  node acdp/cli.js lock-remote <resource> [scope] [reason] [ttlMinutes] [--json]
+  node acdp/cli.js release-remote <resource> [summary] [--json]
   node acdp/cli.js cleanup-remote
   node acdp/cli.js heartbeat [details]
   node acdp/cli.js doctor [--json]
   node acdp/cli.js status [--remote] [--json]
   node acdp/cli.js sync [--json]
   node acdp/cli.js watch
+  node acdp/cli.js subscribe
   node acdp/cli.js cleanup
   node acdp/cli.js batch <task> <resource> [ttlMinutes] [scope]
-  node acdp/cli.js finish
+  node acdp/cli.js finish [--json] [--offline]
+  node acdp/cli.js override-release <agent-id> [--json]
   node acdp/export-logs.js [output-directory]
+
+Flags:
+  --json     Output result as JSON (machine-readable; supported on lock, release, lock-remote, release-remote, finish, override-release, doctor, status, sync)
+  --offline  Read-only mode: skip remote coordination (supported on finish)
+  --remote   Show remote coordination state (status command only)
 
 Scopes:
   file | directory
 
 Examples:
   node acdp/cli.js lock "src/app.js" file "Fix routing bug" 30
+  node acdp/cli.js lock "src/app.js" --json
   node acdp/cli.js renew "src/app.js" 45
   node acdp/cli.js lock-remote "src/app.js" file "Fix routing bug" 30
+  node acdp/cli.js lock-remote "src/app.js" --json
   node acdp/cli.js cleanup-remote
   node acdp/cli.js heartbeat "Still processing dashboard refactor"
   node acdp/cli.js doctor --json
-  node acdp/cli.js release "src/app.js" "Routing bug fixed"
-  node acdp/cli.js release-remote "src/app.js" "Routing bug fixed"
+  node acdp/cli.js release "src/app.js" "Routing bug fixed" --json
+  node acdp/cli.js release-remote "src/app.js" "Routing bug fixed" --json
   node acdp/cli.js status --remote --json
   node acdp/cli.js sync
+  node acdp/cli.js finish --json
+  node acdp/cli.js override-release crashed-agent --json
+  node acdp/cli.js subscribe
   node acdp/cli.js batch "refresh-dashboard-cache" "src/cache/dashboard.json" 5 file
   node acdp/export-logs.js
 `);
@@ -1242,14 +1397,14 @@ function main() {
       }
       {
         const parsed = parseLockArguments(args);
-        lockResource(parsed.resource, parsed.scope, parsed.reason, parsed.ttlMinutes);
+        lockResource(parsed.resource, parsed.scope, parsed.reason, parsed.ttlMinutes, { json: hasFlag(args, '--json') });
       }
       break;
     case 'release':
       if (!args[1]) {
         throw new Error('Usage: node acdp/cli.js release <resource> [summary]');
       }
-      releaseResource(args[1], args[2] || 'Task completed');
+      releaseResource(args[1], args[2] || 'Task completed', { json: hasFlag(args, '--json') });
       break;
     case 'renew':
       if (!args[1]) {
@@ -1263,14 +1418,14 @@ function main() {
       }
       {
         const parsed = parseLockArguments(args);
-        lockRemoteResource(parsed.resource, parsed.scope, parsed.reason, parsed.ttlMinutes);
+        lockRemoteResource(parsed.resource, parsed.scope, parsed.reason, parsed.ttlMinutes, { json: hasFlag(args, '--json') });
       }
       break;
     case 'release-remote':
       if (!args[1]) {
         throw new Error('Usage: node acdp/cli.js release-remote <resource> [summary]');
       }
-      releaseRemoteResource(args[1], args[2] || 'Task completed');
+      releaseRemoteResource(args[1], args[2] || 'Task completed', { json: hasFlag(args, '--json') });
       break;
     case 'status':
       printStatus({ remote: hasFlag(args, '--remote'), json: hasFlag(args, '--json') });
@@ -1305,7 +1460,16 @@ function main() {
       }
       break;
     case 'finish':
-      markFinished();
+      markFinished({ json: hasFlag(args, '--json'), offline: hasFlag(args, '--offline') });
+      break;
+    case 'override-release':
+      if (!args[1]) {
+        throw new Error('Usage: node acdp/cli.js override-release <agent-id>');
+      }
+      overrideRelease(args[1], { json: hasFlag(args, '--json') });
+      break;
+    case 'subscribe':
+      subscribe();
       break;
     default:
       printUsage();

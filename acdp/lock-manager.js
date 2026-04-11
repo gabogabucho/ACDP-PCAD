@@ -33,8 +33,8 @@ function getLockDefaults(options = {}) {
   const defaults = getGovernance(options).lock_defaults || {};
 
   return {
-    ttlMinutes: Number.isInteger(defaults.ttl_minutes) ? defaults.ttl_minutes : 30,
-    maxTtlMinutes: Number.isInteger(defaults.max_ttl_minutes) ? defaults.max_ttl_minutes : 120,
+    ttlMinutes: Number.isInteger(defaults.ttl_minutes) ? defaults.ttl_minutes : 15,
+    maxTtlMinutes: Number.isInteger(defaults.max_ttl_minutes) ? defaults.max_ttl_minutes : 60,
     maxLocksPerAgent: Number.isInteger(defaults.max_locks_per_agent) ? defaults.max_locks_per_agent : 3
   };
 }
@@ -315,5 +315,7 @@ module.exports = {
   inferScope,
   normalizeScope,
   normalizeResource,
-  isExpired
+  isExpired,
+  locksConflict,
+  isWithinDirectory
 };

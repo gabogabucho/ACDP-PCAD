@@ -32,8 +32,8 @@
     }
   },
   "lock_defaults": {
-    "ttl_minutes": 30,
-    "max_ttl_minutes": 120,
+    "ttl_minutes": 15,
+    "max_ttl_minutes": 60,
     "max_locks_per_agent": 3
   }
 }
