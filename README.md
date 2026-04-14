@@ -156,19 +156,45 @@ Open Claude Code and ask it to add the ACDP MCP server globally.
 }
 ```
 
-**Windows** — create the file `~/.claude/mcp/acdp.json` (flat format, no `mcpServers` wrapper):
+**Windows** — first install the package globally, then configure:
+
+```bash
+npm install -g acdp-mcp-server
+```
+
+Then add the MCP config. The location depends on your Claude Code version — check which one exists on your machine:
+
+**Option 1:** `~/.claude/.claude.json` (wrapped format, same as Mac):
 
 ```json
 {
-  "command": "cmd",
-  "args": ["/c", "npx", "-y", "-p", "acdp-mcp-server", "acdp-mcp"],
+  "mcpServers": {
+    "acdp": {
+      "command": "node",
+      "args": ["C:\\Users\\YOUR_USER\\AppData\\Roaming\\npm\\node_modules\\acdp-mcp-server\\bin\\acdp-mcp.js"],
+      "env": {
+        "ACDP_AGENT_ID": "claude-agent"
+      }
+    }
+  }
+}
+```
+
+**Option 2:** `~/.claude/mcp/acdp.json` (flat format, no `mcpServers` wrapper):
+
+```json
+{
+  "command": "node",
+  "args": ["C:\\Users\\YOUR_USER\\AppData\\Roaming\\npm\\node_modules\\acdp-mcp-server\\bin\\acdp-mcp.js"],
   "env": {
     "ACDP_AGENT_ID": "claude-agent"
   }
 }
 ```
 
-> **Note:** On Windows, Claude Code stores MCP servers as individual files in `~/.claude/mcp/`. The filename (`acdp.json`) becomes the server name. No `mcpServers` wrapper is needed.
+Replace `YOUR_USER` with your Windows username. To find the exact path, run: `where acdp-mcp` or `npm root -g`.
+
+> **Note:** On Windows, use `node` directly instead of `npx` or `cmd /c` — they don't propagate stdio correctly to the MCP process. If you're unsure which config location to use, check if `~/.claude/.claude.json` already exists — if it does, add your MCP there. Otherwise, create `~/.claude/mcp/acdp.json`.
 
 After restarting Claude Code, ACDP tools will be available in every project.
 
@@ -191,13 +217,13 @@ Ask your AI agent to create `.mcp.json` in the project root:
 }
 ```
 
-**Windows:**
+**Windows** (install globally first with `npm install -g acdp-mcp-server`):
 ```json
 {
   "mcpServers": {
     "acdp": {
-      "command": "cmd",
-      "args": ["/c", "npx", "-y", "-p", "acdp-mcp-server", "acdp-mcp"],
+      "command": "node",
+      "args": ["C:\\Users\\YOUR_USER\\AppData\\Roaming\\npm\\node_modules\\acdp-mcp-server\\bin\\acdp-mcp.js"],
       "env": {
         "ACDP_AGENT_ID": "claude-agent"
       }
@@ -314,6 +340,8 @@ Check the generated `acdp-socket-server/config.json`:
 
 Each co-worker adds the ACDP MCP to their Claude Code, pointing to the owner's machine:
 
+**Mac / Linux** — add to `~/.claude.json`:
+
 ```json
 {
   "mcpServers": {
@@ -326,6 +354,20 @@ Each co-worker adds the ACDP MCP to their Claude Code, pointing to the owner's m
         "ACDP_TOKEN": "a1b2c3d4e5f6..."
       }
     }
+  }
+}
+```
+
+**Windows** — add to `~/.claude/.claude.json` or `~/.claude/mcp/acdp.json` (see [Installation](#installation) for details on which file to use):
+
+```json
+{
+  "command": "node",
+  "args": ["C:\\Users\\YOUR_USER\\AppData\\Roaming\\npm\\node_modules\\acdp-mcp-server\\bin\\acdp-mcp.js"],
+  "env": {
+    "ACDP_AGENT_ID": "juan-agent",
+    "ACDP_SOCKET_URL": "ws://192.168.1.10:3100",
+    "ACDP_TOKEN": "a1b2c3d4e5f6..."
   }
 }
 ```
