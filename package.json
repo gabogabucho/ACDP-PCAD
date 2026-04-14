@@ -1,8 +1,10 @@
 {
   "name": "acdp-mcp-server",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Agent Coordination Protocol for Development — MCP server for multi-agent file coordination via WebSocket",
-  "bin": "./bin.js",
+  "bin": {
+    "acdp-mcp": "./bin.js"
+  },
   "files": [
     "bin.js",
     "acdp-mcp-server/",
