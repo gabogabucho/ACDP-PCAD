@@ -140,12 +140,19 @@ The only thing persisted is `config.json` (server settings) and an optional appe
 
 Run once:
 
+**Mac / Linux:**
 ```bash
-claude mcp add -s user acdp -- npx -y -p acdp-mcp-server acdp-mcp
+claude mcp add --scope user acdp -- npx -y -p acdp-mcp-server acdp-mcp
+```
+
+**Windows:**
+```bash
+claude mcp add --scope user acdp -- cmd /c npx -y -p acdp-mcp-server acdp-mcp
 ```
 
 Or manually add to `~/.claude.json`:
 
+**Mac / Linux:**
 ```json
 {
   "mcpServers": {
@@ -160,18 +167,49 @@ Or manually add to `~/.claude.json`:
 }
 ```
 
+**Windows:**
+```json
+{
+  "mcpServers": {
+    "acdp": {
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "-p", "acdp-mcp-server", "acdp-mcp"],
+      "env": {
+        "ACDP_AGENT_ID": "claude-agent"
+      }
+    }
+  }
+}
+```
+
 Done. Every Claude Code session now has ACDP tools available.
 
 ### Option B: Per-project
 
 Add `.mcp.json` to your project root:
 
+**Mac / Linux:**
 ```json
 {
   "mcpServers": {
     "acdp": {
       "command": "npx",
       "args": ["-y", "-p", "acdp-mcp-server", "acdp-mcp"],
+      "env": {
+        "ACDP_AGENT_ID": "claude-agent"
+      }
+    }
+  }
+}
+```
+
+**Windows:**
+```json
+{
+  "mcpServers": {
+    "acdp": {
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "-p", "acdp-mcp-server", "acdp-mcp"],
       "env": {
         "ACDP_AGENT_ID": "claude-agent"
       }
