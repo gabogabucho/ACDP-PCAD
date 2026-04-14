@@ -34,6 +34,7 @@
   "lock_defaults": {
     "ttl_minutes": 15,
     "max_ttl_minutes": 60,
-    "max_locks_per_agent": 3
+    "max_locks_per_agent": 3,
+    "clock_skew_tolerance_seconds": 30
   }
 }

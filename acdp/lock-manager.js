@@ -35,7 +35,10 @@ function getLockDefaults(options = {}) {
   return {
     ttlMinutes: Number.isInteger(defaults.ttl_minutes) ? defaults.ttl_minutes : 15,
     maxTtlMinutes: Number.isInteger(defaults.max_ttl_minutes) ? defaults.max_ttl_minutes : 60,
-    maxLocksPerAgent: Number.isInteger(defaults.max_locks_per_agent) ? defaults.max_locks_per_agent : 3
+    maxLocksPerAgent: Number.isInteger(defaults.max_locks_per_agent) ? defaults.max_locks_per_agent : 3,
+    clockSkewToleranceSeconds: Number.isInteger(defaults.clock_skew_tolerance_seconds)
+      ? defaults.clock_skew_tolerance_seconds
+      : 30
   };
 }
 
@@ -98,13 +101,23 @@ function normalizeResource(resource, scope) {
   return value.endsWith('/') ? value.slice(0, -1) : value;
 }
 
-function isExpired(lock, now = new Date()) {
+// toleranceSeconds: grace period to absorb clock skew between machines.
+// A lock is considered expired only if it expired more than toleranceSeconds ago.
+// Default comes from governance.json → lock_defaults.clock_skew_tolerance_seconds (default: 30).
+function isExpired(lock, now = new Date(), toleranceSeconds = 0) {
   if (!lock || !lock.expires_at) {
     return false;
   }
 
   const expiresAt = new Date(lock.expires_at);
-  return !Number.isNaN(expiresAt.getTime()) && expiresAt <= now;
+  if (Number.isNaN(expiresAt.getTime())) {
+    return false;
+  }
+
+  // Shift the comparison point back by the tolerance so we only declare expiry
+  // after the full tolerance window has passed, regardless of local clock drift.
+  const adjustedNow = new Date(now.getTime() - toleranceSeconds * 1000);
+  return expiresAt <= adjustedNow;
 }
 
 function normalizeExistingLock(lock) {
@@ -165,12 +178,13 @@ function loadLocks(options = {}) {
 
 function cleanupExpiredLocks(options = {}) {
   const now = options.now instanceof Date ? options.now : new Date(options.now || Date.now());
+  const { clockSkewToleranceSeconds } = getLockDefaults(options);
   const document = loadLocksDocument(options);
   const activeLocks = [];
   const expiredLocks = [];
 
   for (const lock of document.locks.map(normalizeExistingLock)) {
-    if (isExpired(lock, now)) {
+    if (isExpired(lock, now, clockSkewToleranceSeconds)) {
       expiredLocks.push(lock);
     } else {
       activeLocks.push(lock);

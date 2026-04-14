@@ -234,6 +234,7 @@ Locks grant exclusive write access to a resource (file, module, or directory).
 
 - Locks have a TTL (time-to-live). Expired locks are considered released.
 - The maximum TTL is defined in `governance.json` → `lock_defaults.max_ttl_minutes`.
+- A grace period for clock skew between machines is defined in `governance.json` → `lock_defaults.clock_skew_tolerance_seconds` (default: 30). A lock is only considered expired after the full tolerance window has elapsed past `expires_at`. This prevents a machine with a clock slightly ahead from incorrectly cleaning up locks that are still valid on the owning agent's clock.
 - **Any agent** that detects an expired lock while reading `locks.json` MAY remove it and append a `release` message with `"expired": true` in the data field. This does not require being the lock owner.
 - An agent may renew its own lock before expiration by updating `expires_at` in `locks.json` and appending a `lock` message with `"renewal": true` in the data field.
 - In remote-first mode, a lock is valid only if it still exists in the latest accepted `origin/acdp/state` and has not expired there. A locally remembered lock is not sufficient proof of ownership.

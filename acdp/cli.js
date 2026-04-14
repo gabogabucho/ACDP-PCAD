@@ -397,18 +397,24 @@ function summarizeRemoteStatus(snapshot) {
 }
 
 function lockResource(resource, scope, reason, ttlMinutes, options = {}) {
+  if (!options.skipSyncWarning) {
+    console.warn('[ACDP] WARNING: local lock does not auto-pull. Run `git pull` first to honor the sync-before-lock rule (protocol §3).');
+  }
+
   cleanupExpiredLocks({ logEvents: true });
 
   const branch = getCurrentBranch();
   const task = reason || `Work on ${resource}`;
   appendEvent('intent', { task, branch, resources: [resource] });
 
+  const lockId = createLockId();
   const result = lockManager.acquireLock({
     resource,
     scope,
     reason: task,
     ttlMinutes,
-    agentId: getAgentId()
+    agentId: getAgentId(),
+    lockId
   });
 
   appendEvent('lock', {
@@ -416,6 +422,7 @@ function lockResource(resource, scope, reason, ttlMinutes, options = {}) {
     scope: result.lock.scope,
     reason: result.lock.reason,
     ttl_minutes: result.ttlMinutes,
+    ...(result.lock.lock_id ? { lock_id: result.lock.lock_id } : {}),
     ...(result.renewal ? { renewal: true } : {})
   });
 
@@ -523,8 +530,9 @@ function renewResource(identifier, ttlMinutes) {
   }
 
   const existingLock = resolveLockByIdentifier(lockManager.loadLocks(), identifier, getAgentId());
+  const { clockSkewToleranceSeconds } = lockManager.getLockDefaults();
 
-  if (lockManager.isExpired(existingLock)) {
+  if (lockManager.isExpired(existingLock, new Date(), clockSkewToleranceSeconds)) {
     throw new Error(`Lock '${existingLock.resource}' is expired. Reacquire it instead of renewing.`);
   }
 
@@ -591,7 +599,8 @@ function renewRemoteResource(identifier, ttlMinutes, prefetchedSnapshot = null) 
         );
       }
 
-      if (lockManager.isExpired(existingLock)) {
+      const { clockSkewToleranceSeconds } = lockManager.getLockDefaults({ governanceJson: path.join(acdpDir, 'governance.json') });
+      if (lockManager.isExpired(existingLock, new Date(), clockSkewToleranceSeconds)) {
         throw buildRemoteConflictError(
           'renew',
           `lock '${existingLock.resource}' is already expired on ${coordinationBranch.COORDINATION_BRANCH}. Reacquire it instead of renewing.`,
@@ -853,8 +862,16 @@ function doctor(options = {}) {
   const myExpiredLocks = locks.filter(lock => lock.agent_id === getAgentId() && lockManager.isExpired(lock));
   const remoteHealthy = !snapshot.available || !snapshot.coordinationHealth ? true : Boolean(snapshot.coordinationHealth.ok);
 
+  // Warn when any active lock will expire within the renewal threshold (default: 5 minutes).
+  const renewWarningThresholdMs = 5 * 60 * 1000;
+  const soonExpiringLocks = myActiveLocks.filter(lock => {
+    if (!lock.expires_at) return false;
+    const diffMs = new Date(lock.expires_at).getTime() - Date.now();
+    return diffMs > 0 && diffMs < renewWarningThresholdMs;
+  });
+
   const report = {
-    ok: protocolFiles.every(file => file.ok) && remoteHealthy,
+    ok: protocolFiles.every(file => file.ok) && remoteHealthy && soonExpiringLocks.length === 0,
     mode: snapshot.available ? 'remote-first' : 'legacy',
     remote: {
       available: Boolean(snapshot.available),
@@ -873,7 +890,8 @@ function doctor(options = {}) {
     agent: {
       id: getAgentId(),
       active_locks: myActiveLocks,
-      expired_locks: myExpiredLocks
+      expired_locks: myExpiredLocks,
+      soon_expiring_locks: soonExpiringLocks
     },
     protocol: {
       ok: protocolFiles.every(file => file.ok),
@@ -909,6 +927,10 @@ function doctor(options = {}) {
   console.log(`Branch sensible: ${report.branch.sensible ? 'yes' : 'no'} (${report.branch.reason})`);
   console.log(`Active locks held by ${report.agent.id}: ${report.agent.active_locks.length}`);
   report.agent.active_locks.forEach(lock => console.log(describeLock(lock)));
+  if (report.agent.soon_expiring_locks.length > 0) {
+    console.log(`\n${COLORS.yellow}[WARN] ${report.agent.soon_expiring_locks.length} lock(s) expire within 5 minutes — renew now to maintain ownership:${COLORS.reset}`);
+    report.agent.soon_expiring_locks.forEach(lock => console.log(` - ${lock.resource} expires ${lock.expires_at} (${formatRelativeExpiry(lock.expires_at)})`));
+  }
   if (report.agent.expired_locks.length > 0) {
     console.log(`Expired locks still associated with ${report.agent.id}: ${report.agent.expired_locks.length}`);
     report.agent.expired_locks.forEach(lock => console.log(` - [${lock.scope}] ${lock.resource} expired ${lock.expires_at}`));

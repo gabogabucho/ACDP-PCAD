@@ -26,42 +26,45 @@ function getRepoRoot(acdpDir) {
   }
 }
 
+const GIT_TIMEOUT_MS = 30000;
+
 function runGit(cwd, args, options = {}) {
   const result = execFileSync('git', args, {
     cwd,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: GIT_TIMEOUT_MS,
     ...options
   });
 
   return typeof result === 'string' ? result.trim() : '';
 }
 
-function remoteBranchExists(repoRoot) {
-  try {
-    const output = runGit(repoRoot, ['ls-remote', '--heads', REMOTE_NAME, COORDINATION_BRANCH]);
-    return Boolean(output);
-  } catch (error) {
-    return false;
-  }
+function sleepSync(ms) {
+  const buf = new SharedArrayBuffer(4);
+  Atomics.wait(new Int32Array(buf), 0, 0, ms);
 }
 
 function fetchCoordinationBranch(repoRoot) {
-  if (!remoteBranchExists(repoRoot)) {
+  try {
+    runGit(repoRoot, ['fetch', REMOTE_NAME, `refs/heads/${COORDINATION_BRANCH}:${COORDINATION_REF}`]);
+  } catch {
     return { available: false, mode: 'legacy', remote: REMOTE_NAME, branch: COORDINATION_BRANCH };
   }
 
-  runGit(repoRoot, ['fetch', REMOTE_NAME, `refs/heads/${COORDINATION_BRANCH}:${COORDINATION_REF}`]);
-  const revision = runGit(repoRoot, ['rev-parse', COORDINATION_REF]);
-
-  return {
-    available: true,
-    mode: 'remote-first',
-    remote: REMOTE_NAME,
-    branch: COORDINATION_BRANCH,
-    ref: COORDINATION_REF,
-    revision
-  };
+  try {
+    const revision = runGit(repoRoot, ['rev-parse', COORDINATION_REF]);
+    return {
+      available: true,
+      mode: 'remote-first',
+      remote: REMOTE_NAME,
+      branch: COORDINATION_BRANCH,
+      ref: COORDINATION_REF,
+      revision
+    };
+  } catch {
+    return { available: false, mode: 'legacy', remote: REMOTE_NAME, branch: COORDINATION_BRANCH };
+  }
 }
 
 function readTreeFile(repoRoot, ref, relativePath, fallback = null) {
@@ -250,6 +253,27 @@ function loadRemoteCoordinationSnapshot(repoRoot) {
   };
 }
 
+// After a successful remote mutation, copy the authoritative coordination files into
+// the working tree so that local commands and humans reading the files see current state.
+// Failures here are best-effort: they should warn but not undo a successful push.
+function syncLocalFromRemote(repoRoot) {
+  try {
+    runGit(repoRoot, ['fetch', REMOTE_NAME, `refs/heads/${COORDINATION_BRANCH}:${COORDINATION_REF}`]);
+  } catch {
+    return; // network hiccup after a successful push — local files remain stale but coordination succeeded
+  }
+
+  for (const file of DEFAULT_COORD_FILES) {
+    try {
+      const content = runGit(repoRoot, ['show', `${COORDINATION_REF}:acdp/${file}`]);
+      const dest = path.join(repoRoot, 'acdp', file);
+      fs.writeFileSync(dest, content);
+    } catch {
+      // file may not exist on the coordination branch yet — skip silently
+    }
+  }
+}
+
 function createTempWorktree(repoRoot, baseRef) {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'acdp-state-'));
 
@@ -321,6 +345,11 @@ function publishRemoteMutation(options) {
       runGit(tempDir, ['push', REMOTE_NAME, `HEAD:refs/heads/${COORDINATION_BRANCH}`]);
 
       const resultingCoordRev = runGit(tempDir, ['rev-parse', 'HEAD']);
+
+      // Best-effort: mirror updated coordination files back to the working tree
+      // so local commands and file readers see current state without an explicit pull.
+      syncLocalFromRemote(repoRoot);
+
       return {
         mode: 'remote-first',
         available: true,
@@ -345,6 +374,12 @@ function publishRemoteMutation(options) {
         const latestRef = latestSnapshot.available ? `${REMOTE_NAME}/${COORDINATION_BRANCH} @ ${latestSnapshot.revision}` : `${REMOTE_NAME}/${COORDINATION_BRANCH}`;
         throw new Error(`Remote coordination branch kept changing while publishing '${summary}'. Refresh from ${latestRef}, inspect the current authoritative state, and retry manually if the operation still makes sense.`);
       }
+
+      // Exponential backoff with jitter to avoid thundering herd on simultaneous collisions.
+      // Base: 100ms * 2^(attempt-1), capped at 2s, plus 80-200ms random jitter.
+      const backoffMs = Math.min(100 * Math.pow(2, attempt - 1), 2000);
+      const jitterMs = 80 + Math.floor(Math.random() * 120);
+      sleepSync(backoffMs + jitterMs);
     } finally {
       removeTempWorktree(repoRoot, tempDir);
     }
@@ -364,5 +399,6 @@ module.exports = {
   getLocalFileContent,
   fetchCoordinationBranch,
   loadRemoteCoordinationSnapshot,
+  syncLocalFromRemote,
   publishRemoteMutation
 };
