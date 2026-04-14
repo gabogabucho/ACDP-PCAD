@@ -9,7 +9,6 @@ class AcdpSocketClient extends EventEmitter {
     this.agentId = agentId;
     this.machine = machine;
     this.ws = null;
-    this.connected = false;
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 20;
     this.baseReconnectDelay = 1000;
@@ -32,7 +31,6 @@ class AcdpSocketClient extends EventEmitter {
         }
         if (data.event === 'state_sync') {
           this.ws.removeListener('message', onFirstMessage);
-          this.connected = true;
           this.reconnectAttempts = 0;
           this._setupMessageHandler();
           this.emit('state_sync', data);
@@ -51,8 +49,7 @@ class AcdpSocketClient extends EventEmitter {
       });
 
       this.ws.on('close', (code) => {
-        const wasConnected = this.connected;
-        this.connected = false;
+        const wasConnected = code !== 1006; // 1006 = abnormal, never was fully open
         this.emit('disconnected', { code });
 
         if (this._shouldReconnect && wasConnected) {
@@ -219,6 +216,10 @@ class AcdpSocketClient extends EventEmitter {
 
       this.send({ action, ...data });
     });
+  }
+
+  get connected() {
+    return this.ws && this.ws.readyState === 1;
   }
 
   disconnect() {

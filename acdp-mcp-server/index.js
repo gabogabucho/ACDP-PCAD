@@ -14,28 +14,19 @@ const MACHINE = process.env.ACDP_MACHINE || require('os').hostname();
 const SOCKET_URL_OVERRIDE = process.env.ACDP_SOCKET_URL || null;
 const TOKEN_OVERRIDE = process.env.ACDP_TOKEN || null;
 
-async function main() {
-  let url, token;
+// Shared state — tools access these via the context object
+const context = {
+  socketClient: null,
+  commands: null,
+  currentUrl: null
+};
 
-  if (SOCKET_URL_OVERRIDE && TOKEN_OVERRIDE) {
-    // Manual config — use provided URL and token directly
-    url = SOCKET_URL_OVERRIDE;
-    token = TOKEN_OVERRIDE;
-    console.error(`[ACDP MCP] Using manual config: ${url}`);
-  } else {
-    // Auto-bootstrap: find or start the socket server
-    console.error('[ACDP MCP] Auto-bootstrapping socket server...');
-    const server = await ensureServer();
-    url = server.url;
-    token = server.config.token;
-    if (server.started) {
-      console.error(`[ACDP MCP] Started new server (pid: ${server.pid})`);
-    } else {
-      console.error(`[ACDP MCP] Found existing server at ${url}`);
-    }
+async function connectToServer(url, token) {
+  // Disconnect existing client if any
+  if (context.socketClient) {
+    try { context.socketClient.disconnect(); } catch {}
   }
 
-  // Connect to the socket server
   const socketClient = new AcdpSocketClient({
     url,
     token,
@@ -43,7 +34,7 @@ async function main() {
     machine: MACHINE
   });
 
-  socketClient.on('error', (err) => {
+  socketClient.on('server_error', (err) => {
     console.error('[ACDP MCP] Socket error:', err.message);
   });
 
@@ -57,29 +48,52 @@ async function main() {
     }
   });
 
-  try {
-    await socketClient.connect();
-    console.error(`[ACDP MCP] Connected as ${AGENT_ID} (${MACHINE})`);
-  } catch (err) {
-    console.error(`[ACDP MCP] Failed to connect: ${err.message}`);
-    process.exit(1);
+  await socketClient.connect();
+
+  context.socketClient = socketClient;
+  context.commands = new AcdpCommands(socketClient);
+  context.currentUrl = url;
+
+  console.error(`[ACDP MCP] Connected as ${AGENT_ID} (${MACHINE}) to ${url}`);
+}
+
+async function main() {
+  let url, token;
+
+  if (SOCKET_URL_OVERRIDE && TOKEN_OVERRIDE) {
+    url = SOCKET_URL_OVERRIDE;
+    token = TOKEN_OVERRIDE;
+    console.error(`[ACDP MCP] Using manual config: ${url}`);
+  } else {
+    console.error('[ACDP MCP] Auto-bootstrapping socket server...');
+    const server = await ensureServer();
+    url = server.url;
+    token = server.config.token;
+    if (server.started) {
+      console.error(`[ACDP MCP] Started new server (pid: ${server.pid})`);
+    } else {
+      console.error(`[ACDP MCP] Found existing server at ${url}`);
+    }
   }
 
-  const commands = new AcdpCommands(socketClient);
+  await connectToServer(url, token);
 
   // Create MCP server
   const mcpServer = new McpServer(
-    { name: 'acdp-coordination', version: '0.4.0' },
+    { name: 'acdp-coordination', version: '0.5.0' },
     {
       capabilities: { tools: {}, prompts: {} },
-      instructions: 'This server provides file coordination tools for multi-agent development. Always check locks before modifying files, and notify after committing changes. Use the coordination-protocol prompt for full instructions.'
+      instructions: `This server provides file coordination tools for multi-agent development. Always check locks before modifying files, and notify after committing changes.
+
+IMPORTANT: You are currently connected to a LOCAL coordination server. If the user wants to coordinate with agents on another machine, use the connect_remote tool to connect to that machine's socket server — you will need to ask the user for the IP address and the secret token.
+
+Use the coordination-protocol prompt for full instructions.`
     }
   );
 
-  registerTools(mcpServer, commands);
+  registerTools(mcpServer, context, connectToServer);
   registerPrompts(mcpServer);
 
-  // Connect MCP server to stdio transport
   const transport = new StdioServerTransport();
   await mcpServer.connect(transport);
   console.error('[ACDP MCP] MCP server running on stdio');
