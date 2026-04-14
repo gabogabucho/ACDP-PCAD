@@ -20,8 +20,8 @@ Your tasks:
      {
        "mcpServers": {
          "acdp": {
-           "command": "node",
-           "args": ["acdp-mcp-server/index.js"],
+           "command": "npx",
+           "args": ["-y", "acdp-mcp-server"],
            "env": {
              "ACDP_AGENT_ID": "your-agent-id"
            }

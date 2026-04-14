@@ -1,0 +1,50 @@
+{
+  "name": "acdp-mcp-server",
+  "version": "0.4.0",
+  "description": "Agent Coordination Protocol for Development — MCP server for multi-agent file coordination via WebSocket",
+  "bin": {
+    "acdp-mcp-server": "./acdp-mcp-server/index.js"
+  },
+  "files": [
+    "acdp-mcp-server/",
+    "acdp-socket-server/index.js",
+    "acdp-socket-server/state.js",
+    "acdp-socket-server/handlers.js",
+    "acdp-socket-server/approval-engine.js",
+    "acdp-socket-server/auth.js",
+    "acdp-socket-server/logger.js",
+    "acdp-socket-server/bootstrap.js",
+    "acdp-socket-client/"
+  ],
+  "scripts": {
+    "start": "node acdp-mcp-server/index.js",
+    "start:server": "node acdp-socket-server/index.js",
+    "test": "node test-bootstrap.js"
+  },
+  "keywords": [
+    "mcp",
+    "ai-agents",
+    "coordination",
+    "websocket",
+    "claude",
+    "multi-agent",
+    "file-locking",
+    "model-context-protocol"
+  ],
+  "author": "gabogabucho",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gabogabucho/ACDP-PCAD"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "minimatch": "^10.0.1",
+    "uuid": "^11.1.0",
+    "ws": "^8.18.0",
+    "zod": "^3.24.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
