@@ -1,326 +1,476 @@
 <img width="991" height="564" alt="image" src="https://github.com/user-attachments/assets/c2b1a1ec-1faa-4b40-831d-081c8e1af178" />
 
-
 # ACDP — Agent Coordination Protocol for Development
 
-🌐 **[Leer en español](README.es.md)**
+**[Leer en español](README.es.md)**
 
-## Description
-
-ACDP (Agent Coordination Protocol for Development) is an open standard that defines how multiple agents (AIs and humans) can collaborate on the same code repository without generating conflicts, maintaining coherence and traceability in dynamic development environments.
-
-ACDP introduces a coordination layer on top of traditional version control systems, enabling structured parallel work in high-iteration contexts.
+ACDP is an open protocol that lets multiple AI agents (and humans) work on the same codebase simultaneously without conflicts. It provides real-time file locking, commit approval, and agent awareness through a lightweight WebSocket server — no polling, no merge hell.
 
 ---
 
-## Problem
+## The Problem
 
-AI-assisted development (vibecoding) introduces new dynamics:
+When multiple AI agents work on the same project ("vibecoding"), things break fast:
 
-* Multiple agents generate changes simultaneously
-* Changes are broad and non-incremental
-* Commit history loses value as a source of truth
-* Integration conflicts increase
-* There is no common coordination protocol between agents
+- **Conflicts everywhere** — Two agents edit the same file, one overwrites the other
+- **No awareness** — Agent A doesn't know Agent B is modifying a shared dependency
+- **No coordination** — There's no way to say "I'm working on this, don't touch it"
+- **Slow feedback** — Git-based coordination requires commit+push+pull cycles just to check lock status
+- **Lost work** — Without locks, agents silently overwrite each other's changes
 
-Current systems are designed for incremental human collaboration, not for multi-agent coordination.
-
----
-
-## Objective
-
-Define a protocol that enables:
-
-* Coordination between agents without a mandatory central authority
-* Concurrent work without destructive conflicts
-* Structured communication between agents
-* Shared state persistence
-* Traceability of decisions and actions
+Git was designed for incremental human collaboration. It has no concept of real-time coordination between parallel autonomous agents.
 
 ---
 
-## Approach
+## How ACDP Solves It
 
-ACDP operates as a logical layer within the repository. It does not replace the version control system — it complements it.
+ACDP adds a coordination layer on top of your existing workflow. It doesn't replace Git — it complements it.
 
-It is based on:
+**The core idea:** One machine runs a WebSocket server that holds the coordination state (locks, connected agents, pending approvals) in memory. Every agent connects to this server via an MCP (Model Context Protocol) interface and coordinates in real-time.
 
-* Shared state inside the repository
-* Explicit behavioral rules
-* Coordination through structured files
-* Distributed consensus among agents
+```
+Agent wants to edit app.js
+        │
+        ▼
+  check_locks()  ──→  "app.js is free"
+        │
+        ▼
+  lock_files(["app.js"])  ──→  All agents notified: "app.js locked by Agent A"
+        │
+        ▼
+  Agent works locally (only on locked files)
+        │
+        ▼
+  request_commit(["app.js"])  ──→  Auto-approved (agent holds the lock)
+        │
+        ▼
+  Agent commits & pushes to Git
+        │
+        ▼
+  notify_sync(["app.js"])  ──→  All agents notified: "pull, app.js changed"
+                                  Lock auto-released
+```
 
----
-
-## Core Components
-
-### Agent Identity
-
-Each agent registers and operates under a defined identity, verified through a public key in the agent registry.
-
-### Intent Declaration
-
-Before modifying the system, an agent declares its intention — what it will do, which resources it will touch, and on which branch.
-
-### Resource Locks
-
-Concurrent modification of the same resources is prevented through logical locks with automatic expiration (TTL).
-
-### Shared State
-
-The system maintains a human-readable representation of the current project state.
-
-### Event Log
-
-Relevant actions are recorded in a sequential, append-only log.
-
-### Architecture Boundaries
-
-Module ownership, restricted areas, and cross-module coordination rules are explicitly defined.
-
-### Agent Communication
-
-All coordination between agents happens through structured JSON messages appended to `events.log`. The protocol defines 12 message types (`register`, `intent`, `lock`, `release`, `update`, `complete`, `wait`, `block`, `resolve`, `notify`, `request`, `ack`) with a formal schema for validation.
-
-### Governance
-
-Rules are defined about who can participate, how decisions are made, and who can override locks.
+**What makes it different from just using Git branches:**
+- Locks are real-time, not commit-based — you know *instantly* if a file is taken
+- Agents are aware of each other — they can see who's connected and what they're working on
+- Commit approval is built in — configurable auto-approve or manual approval for critical paths
+- Zero polling — WebSocket pushes updates to all agents immediately
 
 ---
 
 ## Architecture
 
-ACDP has two layers: coordination (socket-based) and protocol files (in the repository).
+### Why WebSocket + MCP?
+
+We evaluated three approaches:
+
+| Approach | Pros | Cons |
+|----------|------|------|
+| **Git-based** (files in repo) | No extra infrastructure | Slow (commit+push per lock), polling required, merge conflicts on coordination files |
+| **HTTP API** | Simple REST calls | No real-time updates, agents must poll |
+| **WebSocket + MCP** | Real-time, instant notifications, zero config for agents | Requires one machine to host the server |
+
+We chose WebSocket + MCP because coordination must be real-time. When Agent A locks a file, Agent B needs to know *now*, not after the next `git pull`.
+
+MCP (Model Context Protocol) is the standard interface for AI agents to use external tools. By wrapping the WebSocket client in an MCP server, any AI agent that supports MCP (Claude, GPT, Gemini, etc.) gets coordination tools automatically.
+
+### System Design
 
 ```
-/acdp-socket-server/       # WebSocket coordination server (runs on owner machine)
-  index.js                 # Server entry point
-  state.js                 # In-memory lock/agent state
-  handlers.js              # Message handlers (lock, release, commit, etc.)
-  approval-engine.js       # Auto/manual commit approval logic
-  auth.js                  # Token auth + owner/sub-owner roles
-  logger.js                # JSONL audit log
-  config.json              # Server config (port, token, owner, approval paths)
+        Owner Machine (or any machine)
+        ┌───────────────────────────────┐
+        │   acdp-socket-server          │
+        │   WebSocket on ws://:3100     │
+        │                               │
+        │   ┌─────────────────────┐     │
+        │   │ State (in memory)   │     │
+        │   │  - Active locks     │     │
+        │   │  - Connected agents │     │
+        │   │  - Pending commits  │     │
+        │   └─────────────────────┘     │
+        │                               │
+        │   Approval Engine             │
+        │   Audit Log (JSONL)           │
+        └───────────┬───────────────────┘
+                    │ WebSocket
+          ┌─────────┼──────────────┐
+          │         │              │
+          ▼         ▼              ▼
+     ┌─────────┐ ┌─────────┐ ┌─────────┐
+     │Machine A│ │Machine B│ │Machine C│
+     │         │ │         │ │         │
+     │ Claude  │ │ GPT     │ │ Human + │
+     │ + MCP   │ │ + MCP   │ │ Claude  │
+     └────┬────┘ └────┬────┘ └────┬────┘
+          │           │           │
+          └───────────┼───────────┘
+                      │
+                      ▼
+               Git Repository
+              (source code only)
+```
 
-/acdp-socket-client/       # Client library (used by MCP server)
-  index.js                 # WebSocket client with auto-reconnect
-  commands.js              # Promise-based command helpers
+**Three components, one npm package:**
 
-/acdp-mcp-server/          # MCP server (runs on each agent's machine)
-  index.js                 # MCP entry point (stdio transport)
-  tools.js                 # MCP tools: check_locks, lock_files, etc.
-  prompts.js               # Coordination protocol prompt for AI agents
+| Component | Role |
+|-----------|------|
+| `acdp-socket-server` | WebSocket server — holds locks, agents, and approvals in memory. Runs on one machine. |
+| `acdp-socket-client` | Client library — connects to the server, handles reconnection with exponential backoff. |
+| `acdp-mcp-server` | MCP server — wraps the client into tools that AI agents can call. Runs on every agent's machine. |
 
-/acdp/                     # Protocol files (in the repository)
-  protocol.md              # Coordination rules
-  architecture.md          # Module map and ownership
-  state.md                 # Current system snapshot
-  agents.md                # Active agent roster
-  governance.json          # Authority and override rules
-  agents.registry.json     # Trusted agent definitions
-  messages.schema.json     # JSON Schema for message validation
-  prompts/
-    init-project.md        # Prompt to initialize a project with ACDP
-    join-project.md        # Prompt for an agent to join a project
+### Why In-Memory State?
+
+The coordination state (locks, connected agents) lives only in memory. If the server dies, all locks die with it. This is intentional:
+
+- **Clean restart** — No stale locks from crashed agents
+- **Simplicity** — No database, no persistence layer, no migration scripts
+- **Speed** — Everything is a memory read/write, no I/O
+- **Correctness** — A lock from a dead server is meaningless anyway
+
+The only thing persisted is `config.json` (server settings) and an optional append-only JSONL audit log for debugging.
+
+---
+
+## Installation
+
+**Requirements:** Node.js >= 18
+
+### Option A: Global (recommended — works in every project)
+
+Run once:
+
+```bash
+claude mcp add -s user acdp -- npx -y -p acdp-mcp-server acdp-mcp
+```
+
+Or manually add to `~/.claude.json`:
+
+```json
+{
+  "mcpServers": {
+    "acdp": {
+      "command": "npx",
+      "args": ["-y", "-p", "acdp-mcp-server", "acdp-mcp"],
+      "env": {
+        "ACDP_AGENT_ID": "claude-agent"
+      }
+    }
+  }
+}
+```
+
+Done. Every Claude Code session now has ACDP tools available.
+
+### Option B: Per-project
+
+Add `.mcp.json` to your project root:
+
+```json
+{
+  "mcpServers": {
+    "acdp": {
+      "command": "npx",
+      "args": ["-y", "-p", "acdp-mcp-server", "acdp-mcp"],
+      "env": {
+        "ACDP_AGENT_ID": "claude-agent"
+      }
+    }
+  }
+}
+```
+
+Commit it to the repo — every collaborator who clones gets ACDP automatically.
+
+### What Happens on First Run
+
+When the MCP server starts, it:
+
+1. Checks if a socket server is already running on port 3100
+2. If not, **auto-generates** `config.json` with a random secure token and your machine as owner
+3. Starts the socket server as a detached background process
+4. Connects and registers the agent
+
+**Zero configuration required.** No manual server setup, no token sharing for local use.
+
+---
+
+## Usage
+
+### Available Tools
+
+Once installed, your AI agent has these tools:
+
+| Tool | Description |
+|------|-------------|
+| `check_locks` | List all active file locks — who locked what, when it expires |
+| `lock_files` | Lock files before modifying them. Fails if already locked by another agent |
+| `release_files` | Release your locks when done or when you change plans |
+| `request_commit` | Request permission to commit. Auto-approved if you hold the lock |
+| `notify_sync` | After committing: notify all agents to pull, auto-releases your locks |
+| `list_agents` | See who's connected — agent IDs, machines, roles |
+| `connect_remote` | Switch to a remote server (asks for IP + token) |
+| `connection_status` | Check which server you're currently connected to |
+
+### Single Developer Workflow
+
+```
+You (with Claude) working on a project:
+
+1. Start Claude Code → MCP auto-starts the socket server
+2. Claude calls check_locks → all clear
+3. Claude calls lock_files(["src/api.js"]) → locked
+4. Claude edits src/api.js
+5. Claude calls request_commit → approved (holds the lock)
+6. Claude commits and pushes
+7. Claude calls notify_sync → lock released
+```
+
+Even solo, ACDP is useful: it gives your agent a structured workflow and prevents accidental concurrent edits across multiple Claude sessions.
+
+### Multi-Agent Workflow (Same Machine)
+
+```
+Terminal 1: Claude with ACDP_AGENT_ID=agent-frontend
+Terminal 2: Claude with ACDP_AGENT_ID=agent-backend
+
+Agent Frontend:
+  lock_files(["src/components/Header.jsx"]) → locked
+  (works on Header)
+
+Agent Backend:
+  lock_files(["src/api/routes.js"]) → locked
+  lock_files(["src/components/Header.jsx"]) → FAILS (locked by agent-frontend)
+  (works on routes instead)
+
+Agent Frontend:
+  notify_sync(["src/components/Header.jsx"]) → lock released, backend notified
+  
+Agent Backend:
+  (receives notification: Header.jsx changed, pull)
+  lock_files(["src/components/Header.jsx"]) → now succeeds
 ```
 
 ---
 
-## Visual Overview
+## Working with Co-Workers (Multi-Machine Setup)
 
-```
-        Owner Machine
-        ┌───────────────────────────┐
-        │   acdp-socket-server      │
-        │   (WebSocket ws://:3100)  │
-        │                           │
-        │   Locks in memory         │
-        │   Commit approval engine  │
-        │   Audit log (JSONL)       │
-        └─────────┬─────────────────┘
-                  │ WebSocket
-        ┌─────────┼─────────────┐
-        │         │             │
-        ▼         ▼             ▼
-   ┌─────────┐ ┌─────────┐ ┌─────────┐
-   │ Machine │ │ Machine │ │ Machine │
-   │    A    │ │    B    │ │    C    │
-   │         │ │         │ │         │
-   │ Agent   │ │ Agent   │ │ Agent   │
-   │ + MCP   │ │ + MCP   │ │ + MCP   │
-   └────┬────┘ └────┬────┘ └────┬────┘
-        │           │           │
-        └───────────┼───────────┘
-                    │
-                    ▼
-             Git Repository
-            (code only)
+This is where ACDP shines. Multiple developers, each running their own AI agents, coordinating in real-time.
+
+### Step 1: Owner Starts the Server
+
+The first developer's machine becomes the owner. This happens automatically on first MCP run, but for a team setup you'll want to configure it explicitly:
+
+```bash
+# On the owner's machine, in the project directory:
+npx -y acdp-mcp-server  # This auto-generates config.json
 ```
 
-### Agent workflow via MCP
+Check the generated `acdp-socket-server/config.json`:
 
-1. Agent calls `check_locks` → sees available files
-2. Agent calls `lock_files` → server locks, notifies all
-3. Agent works locally on locked files
-4. Agent calls `request_commit` → server approves
-5. Agent commits and pushes to Git
-6. Agent calls `notify_sync` → server notifies all, releases locks
+```json
+{
+  "port": 3100,
+  "token": "a1b2c3d4e5f6...",
+  "owner": "maxi-macbook",
+  "sub_owner": null,
+  "manual_approval_paths": [],
+  "default_ttl_minutes": 15,
+  "pending_commit_timeout_minutes": 10
+}
+```
+
+**Share two things with your co-workers:**
+1. Your machine's IP address on the local network (e.g., `192.168.1.10`)
+2. The `token` from `config.json`
+
+### Step 2: Co-Workers Connect
+
+Each co-worker adds the ACDP MCP to their Claude Code, pointing to the owner's machine:
+
+```json
+{
+  "mcpServers": {
+    "acdp": {
+      "command": "npx",
+      "args": ["-y", "-p", "acdp-mcp-server", "acdp-mcp"],
+      "env": {
+        "ACDP_AGENT_ID": "juan-agent",
+        "ACDP_SOCKET_URL": "ws://192.168.1.10:3100",
+        "ACDP_TOKEN": "a1b2c3d4e5f6..."
+      }
+    }
+  }
+}
+```
+
+Or, if they already have the MCP running locally, their agent can use `connect_remote` at any time:
+
+```
+Agent: connect_remote(url: "ws://192.168.1.10:3100", token: "a1b2c3d4e5f6...")
+→ "Connected to remote server. All tools now operate against that server."
+```
+
+### Step 3: Everyone Works
+
+```
+Maxi's machine (owner):           Juan's machine:
+  Claude locks src/auth.js           Claude locks src/dashboard.js
+  Claude works on auth               Claude works on dashboard
+  Claude commits & notifies    →     Juan's Claude: "auth.js changed, pull"
+                                     Juan's Claude pulls, continues working
+                                     Claude commits & notifies
+  Maxi's Claude: "dashboard.js changed, pull"
+```
+
+### Configuration Options
+
+#### Sub-Owner (Failover)
+
+If the owner's machine goes down, a sub-owner can take over:
+
+```json
+{
+  "owner": "maxi-macbook",
+  "sub_owner": "juan-desktop"
+}
+```
+
+The sub-owner starts the server on their machine. Agents reconnect automatically (built-in exponential backoff).
+
+#### Manual Approval for Critical Paths
+
+Some files are too important for auto-approve:
+
+```json
+{
+  "manual_approval_paths": [
+    "src/core/**",
+    "config/**",
+    "*.config.js"
+  ]
+}
+```
+
+When an agent calls `request_commit` for these files, the request goes to PENDING. The owner or sub-owner must approve it manually via the socket.
+
+#### Agent Identity
+
+Each agent should have a unique `ACDP_AGENT_ID`. Good patterns:
+
+```
+ACDP_AGENT_ID=maxi-claude        # Developer name + tool
+ACDP_AGENT_ID=frontend-agent     # Role-based
+ACDP_AGENT_ID=claude-pr-review   # Task-based
+```
 
 ---
 
-## Workflow
+## Commit Approval Flow
 
-1. Owner starts the socket server (`node acdp-socket-server/index.js`)
-2. Agent configures MCP server (auto-configured via prompts — see `acdp/prompts/join-project.md`)
-3. Agent reads protocol and registers in `acdp/agents.registry.json`
-4. Agent calls `check_locks` to see available files
-5. Agent calls `lock_files` for the files it needs
-6. Agent works on its own branch
-7. Agent calls `request_commit` and waits for approval
-8. Agent commits and pushes
-9. Agent calls `notify_sync` — locks auto-released, all agents notified
+```
+Agent calls request_commit(files, summary)
+        │
+        ▼
+  Does agent hold locks for ALL files?
+        │
+      No → REJECTED ("You don't hold locks for: file.js")
+        │
+      Yes
+        │
+        ▼
+  Do any files match manual_approval_paths?
+        │
+      No → AUTO-APPROVED (agent can commit immediately)
+        │
+      Yes → PENDING (owner/sub-owner must approve)
+        │
+        ├──→ Owner approves → APPROVED
+        ├──→ Owner rejects → REJECTED (with reason)
+        └──→ Timeout (10 min default) → AUTO-REJECTED
+```
 
 ---
 
-## Access Model
+## Protocol Files
 
-ACDP does not manage repository access.
+ACDP also includes protocol files that live in your repository (under `acdp/`). These are documentation and governance, not runtime state:
 
-Access is controlled by the version control system.
+| File | Purpose |
+|------|---------|
+| `protocol.md` | The full coordination rules — agents read this to understand how to behave |
+| `architecture.md` | Module map, ownership, restricted areas |
+| `governance.json` | Authority rules: who can override locks, approve agents, modify the protocol |
+| `agents.registry.json` | Registered agent identities |
+| `agents.md` | Current agent roster with status |
+| `state.md` | Human-readable project state snapshot |
+| `prompts/init-project.md` | Prompt to give an AI agent to initialize ACDP in a new project |
+| `prompts/join-project.md` | Prompt to give an AI agent to join an existing ACDP project |
 
-ACDP defines:
+---
 
-* Which agents are recognized
-* How they must behave
-* How their actions are validated
+## Quick Start Prompts
 
-Unrecognized agents can be ignored by the system.
+### Initialize a New Project
+
+Copy the prompt from [`acdp/prompts/init-project.md`](acdp/prompts/init-project.md) and paste it to your AI agent. It will:
+1. Configure the MCP connection
+2. Register as the first agent
+3. Define the project architecture
+4. Set governance rules
+5. Start working
+
+### Add an Agent to an Existing Project
+
+Copy the prompt from [`acdp/prompts/join-project.md`](acdp/prompts/join-project.md). The agent will:
+1. Configure the MCP connection
+2. Read the protocol and current state
+3. Register itself
+4. Check locks and start contributing
+
+---
+
+## Security
+
+- **Token-based auth** — Every connection requires a shared token. Without it, the server rejects the connection.
+- **Role-based permissions** — Only the owner and sub-owner can approve/reject commits for manual approval paths.
+- **No external exposure by default** — The server listens on `0.0.0.0:3100` but is intended for local network use. For internet exposure, use a reverse proxy with TLS.
+- **Locks are agent-scoped** — You can only release your own locks. The owner can override any lock.
 
 ---
 
 ## Philosophy
 
-* Simplicity over complexity
-* Coordination over control
-* Shared state over implicit synchronization
-* Distributed consensus over central authority
-* Observability for humans
-
----
-
-## Setup
-
-### 1. Start the socket server (owner machine)
-
-```bash
-cd acdp-socket-server
-npm install
-# Edit config.json: set your hostname as owner, choose a token
-node index.js
-```
-
-### 2. Agent self-configuration (automatic)
-
-When an AI agent joins the project using `acdp/prompts/join-project.md`, it will:
-1. Read `acdp-socket-server/config.json` to find the port and token
-2. Add the MCP server config to `.mcp.json` (Claude Code) or the equivalent config file
-3. Start using MCP tools (`check_locks`, `lock_files`, etc.) to coordinate
-
-No manual MCP setup needed — the agent configures itself.
-
-### 3. MCP Tools available to agents
-
-| Tool | Description |
-|------|-------------|
-| `check_locks` | List all active file locks |
-| `lock_files` | Lock files before modifying (fails if already locked) |
-| `release_files` | Release your locks |
-| `request_commit` | Request permission to commit (auto-approve or manual) |
-| `notify_sync` | After commit: notify all agents, auto-release locks |
-| `list_agents` | List connected agents and their status |
-
-### 4. Commit approval
-
-By default, `request_commit` auto-approves if the agent holds the lock for all requested files. Configure `manual_approval_paths` in `acdp-socket-server/config.json` to require manual owner approval for specific paths:
-
-```json
-{
-  "manual_approval_paths": ["src/core/**", "config/**"]
-}
-```
-
-### 5. Failover
-
-If the owner machine is unavailable, the sub-owner (configured in `config.json`) can start the server on their machine. Agents reconnect automatically.
-
-**Definition of DONE (Exit Clause):**
-When the project's `state.md` is marked with `Status: DONE` (enforced natively via `node acdp/cli.js finish`), all participating agents MUST immediately cease operations, abandon internal task-seeking loops, and formally log off. Ongoing automated tasks should be aborted.
-
----
-
-## 🔒 Versioned Commit Guard
-
-ACDP includes a versioned pre-commit guard at `scripts/git-hooks/pre-commit`.
-
-What it checks:
-- commits are blocked when `acdp/locks.json` still contains active locks
-- `acdp/locks.json` keeps the canonical `{ "locks": [...] }` shape
-- `acdp/events.log` remains valid JSONL and uses `agent/data`, not legacy `agent_id/payload`
-- event types stay aligned with `acdp/messages.schema.json`
-
-Suggested installation:
-
-```bash
-git config core.hooksPath scripts/git-hooks
-```
-
-This hook is **not enabled automatically**. Enable it manually either by pointing `core.hooksPath` at `scripts/git-hooks` or by copying `scripts/git-hooks/pre-commit` into `.git/hooks/pre-commit`. On Unix-like systems, ensure it is executable.
-
----
-
-## Quick Start: AI Prompts
-
-ACDP includes ready-to-use prompts that you can copy and paste into any AI agent (Claude, GPT, Gemini, etc.).
-
-### Start a new project
-
-Use [`acdp/prompts/init-project.md`](acdp/prompts/init-project.md) — gives the AI instructions to initialize the ACDP structure, register itself as the first agent, define the architecture, and start working.
-
-### Add an agent to an existing project
-
-Use [`acdp/prompts/join-project.md`](acdp/prompts/join-project.md) — gives the AI instructions to read the current state, register, check for active locks, declare intent, and contribute without conflicts.
-
----
-
-## Simulation
-
-See [`acdp/examples/simulation-php.md`](acdp/examples/simulation-php.md) for a complete walkthrough of 3 agents (2 AIs + 1 human) building a PHP website, including:
-
-* Parallel work without conflicts
-* A lock conflict resolved through request/ack/notify messages
-* A shared config file managed without merge conflicts
-* The complete `events.log` output (23 messages)
-
-For remote-first operator scenarios such as reconnects, stale snapshots, same-resource races, and cleanup under renewal races, see [`docs/remote-simulation-notes.md`](docs/remote-simulation-notes.md).
+- **Simplicity over complexity** — One npm package, one command, zero config
+- **Coordination over control** — ACDP coordinates, it doesn't dictate
+- **Real-time over polling** — WebSocket, not commit-and-check
+- **Ephemeral over persistent** — Locks die with the server, no stale state
+- **Protocol-agnostic** — Works with Git, but the coordination layer doesn't depend on it
 
 ---
 
 ## Project Status
 
-Version: v0.2.0
+**Version:** 0.5.3
 
-ACDP is in active development. See [CHANGELOG.md](CHANGELOG.md) for release notes and [docs/roadmap.md](docs/roadmap.md) for planned features.
+ACDP is in active development. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+
+**npm:** [`acdp-mcp-server`](https://www.npmjs.com/package/acdp-mcp-server)
 
 ---
 
 ## Contributing
 
-Contributions are welcome.
-The goal is to iterate the protocol based on real-world usage.
+Contributions are welcome. The goal is to iterate the protocol based on real-world multi-agent usage.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ---
 
 ## Author
 
-Gabriel Urrutia
-Twitter: [@gabogabucho](https://twitter.com/gabogabucho)
+Gabriel Urrutia — [@gabogabucho](https://twitter.com/gabogabucho)
+
+## License
+
+[MIT](LICENSE)
