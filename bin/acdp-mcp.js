@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
-const AcdpSocketClient = require('./acdp-socket-client/index');
-const AcdpCommands = require('./acdp-socket-client/commands');
-const { ensureServer } = require('./acdp-socket-server/bootstrap');
-const { registerTools } = require('./acdp-mcp-server/tools');
-const { registerPrompts } = require('./acdp-mcp-server/prompts');
+const AcdpSocketClient = require('../acdp-socket-client/index');
+const AcdpCommands = require('../acdp-socket-client/commands');
+const { ensureServer } = require('../acdp-socket-server/bootstrap');
+const { registerTools } = require('../acdp-mcp-server/tools');
+const { registerPrompts } = require('../acdp-mcp-server/prompts');
 
 const AGENT_ID = process.env.ACDP_AGENT_ID || `agent-${require('os').hostname()}-${process.pid}`;
 const MACHINE = process.env.ACDP_MACHINE || require('os').hostname();
