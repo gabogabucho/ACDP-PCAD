@@ -30,7 +30,10 @@ async function run() {
   const result = await ensureServer();
   assert(result.started === true, 'Server was auto-started');
   assert(result.config.token.length > 0, 'Token was auto-generated');
-  assert(result.config.owner === require('os').hostname(), `Owner is this machine (${result.config.owner})`);
+  assert(!result.config.owner, 'config.json does NOT contain owner (moved to governance)');
+  assert(result.governance != null, 'Governance object returned');
+  const govOwner = result.governance.project?.owner || require('os').hostname();
+  assert(govOwner.length > 0, `Owner resolved from governance: ${govOwner}`);
   assert(fs.existsSync(configPath), 'config.json was created');
   console.log(`   Token: ${result.config.token}`);
   console.log(`   URL: ${result.url}`);

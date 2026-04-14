@@ -83,7 +83,7 @@ async function main() {
 
   // Create MCP server
   const mcpServer = new McpServer(
-    { name: 'acdp-coordination', version: '0.6.0' },
+    { name: 'acdp-coordination', version: '0.7.0' },
     {
       capabilities: { tools: {}, prompts: {} },
       instructions: `This server provides file coordination tools for multi-agent development.

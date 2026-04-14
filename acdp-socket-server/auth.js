@@ -1,8 +1,10 @@
+const os = require('os');
+
 class Auth {
-  constructor(config) {
+  constructor(config, governance) {
     this.token = config.token;
-    this.owner = config.owner;
-    this.subOwner = config.sub_owner || null;
+    this.owner = governance?.project?.owner || os.hostname();
+    this.subOwner = governance?.project?.sub_owner || null;
   }
 
   validateToken(token) {

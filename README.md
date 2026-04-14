@@ -128,7 +128,7 @@ The coordination state (locks, connected agents) lives only in memory. If the se
 - **Speed** — Everything is a memory read/write, no I/O
 - **Correctness** — A lock from a dead server is meaningless anyway
 
-The only thing persisted is `config.json` (server settings) and an optional append-only JSONL audit log for debugging.
+The only things persisted are `config.json` (server infrastructure: port, token, timeouts), `acdp/governance.json` (policy: owner, sub-owner, approval rules), and an optional append-only JSONL audit log for debugging.
 
 ---
 
@@ -320,19 +320,31 @@ The first developer's machine becomes the owner. This happens automatically on f
 npx -y acdp-mcp-server  # This auto-generates config.json
 ```
 
-Check the generated `acdp-socket-server/config.json`:
+Check the generated `acdp-socket-server/config.json` (infrastructure only):
 
 ```json
 {
   "port": 3100,
   "token": "a1b2c3d4e5f6...",
-  "owner": "maxi-macbook",
-  "sub_owner": null,
   "manual_approval_paths": [],
   "default_ttl_minutes": 15,
   "pending_commit_timeout_minutes": 10
 }
 ```
+
+The owner is defined in `acdp/governance.json` (policy), not in config.json:
+
+```json
+{
+  "project": {
+    "name": "my-project",
+    "owner": "maxi-macbook",
+    "sub_owner": null
+  }
+}
+```
+
+> If `acdp/governance.json` doesn't exist, the owner defaults to the machine's hostname.
 
 **Share two things with your co-workers:**
 1. Your machine's IP address on the local network (e.g., `192.168.1.10`)
@@ -397,12 +409,15 @@ Maxi's machine (owner):           Juan's machine:
 
 #### Sub-Owner (Failover)
 
-If the owner's machine goes down, a sub-owner can take over:
+If the owner's machine goes down, a sub-owner can take over. Set it in `acdp/governance.json`:
 
 ```json
 {
-  "owner": "maxi-macbook",
-  "sub_owner": "juan-desktop"
+  "project": {
+    "name": "my-project",
+    "owner": "maxi-macbook",
+    "sub_owner": "juan-desktop"
+  }
 }
 ```
 

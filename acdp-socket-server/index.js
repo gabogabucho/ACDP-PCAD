@@ -1,17 +1,20 @@
 const { WebSocketServer } = require('ws');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const State = require('./state');
 const Auth = require('./auth');
 const ApprovalEngine = require('./approval-engine');
 const Logger = require('./logger');
 const Handlers = require('./handlers');
+const { loadGovernance } = require('./bootstrap');
 
 const configPath = process.env.ACDP_CONFIG || path.join(__dirname, 'config.json');
 const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+const governance = loadGovernance();
 
 const state = new State({ defaultTtlMinutes: config.default_ttl_minutes });
-const auth = new Auth(config);
+const auth = new Auth(config, governance);
 const logger = new Logger();
 const approvalEngine = new ApprovalEngine(config, state, logger);
 
@@ -146,7 +149,9 @@ setInterval(() => {
 }, 30_000);
 
 console.log(`[ACDP] Socket server listening on ws://0.0.0.0:${config.port}`);
-console.log(`[ACDP] Owner: ${config.owner}${config.sub_owner ? `, Sub-owner: ${config.sub_owner}` : ''}`);
+const ownerName = governance.project?.owner || os.hostname();
+const subOwnerName = governance.project?.sub_owner;
+console.log(`[ACDP] Owner: ${ownerName}${subOwnerName ? `, Sub-owner: ${subOwnerName}` : ''}`);
 if (config.manual_approval_paths.length > 0) {
   console.log(`[ACDP] Manual approval paths: ${config.manual_approval_paths.join(', ')}`);
 }

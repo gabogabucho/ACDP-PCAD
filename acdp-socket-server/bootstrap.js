@@ -23,12 +23,10 @@ function loadOrCreateConfig() {
     return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
   }
 
-  // Auto-generate config with this machine as owner
+  // Auto-generate config (infrastructure only — owner lives in governance.json)
   const config = {
     port: DEFAULT_PORT,
     token: crypto.randomBytes(16).toString('hex'),
-    owner: os.hostname(),
-    sub_owner: null,
     manual_approval_paths: [],
     default_ttl_minutes: 15,
     pending_commit_timeout_minutes: 10
@@ -36,6 +34,40 @@ function loadOrCreateConfig() {
 
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2) + '\n', 'utf8');
   return config;
+}
+
+/**
+ * Load governance.json for owner/sub_owner (policy).
+ * Search order: ACDP_GOVERNANCE_PATH env var → acdp/governance.json relative to CWD → fallback defaults.
+ */
+function loadGovernance() {
+  const paths = [
+    process.env.ACDP_GOVERNANCE_PATH,
+    path.join(process.cwd(), 'acdp', 'governance.json'),
+    path.join(SERVER_DIR, '..', 'acdp', 'governance.json')
+  ].filter(Boolean);
+
+  for (const p of paths) {
+    if (fs.existsSync(p)) {
+      try {
+        const gov = JSON.parse(fs.readFileSync(p, 'utf8'));
+        console.error(`[ACDP Bootstrap] Loaded governance from ${p}`);
+        return gov;
+      } catch (e) {
+        console.error(`[ACDP Bootstrap] Warning: failed to parse ${p}: ${e.message}`);
+      }
+    }
+  }
+
+  // Fallback: no governance.json found — use hostname as owner
+  console.error('[ACDP Bootstrap] No governance.json found, using hostname as owner');
+  return {
+    project: {
+      name: 'default',
+      owner: os.hostname(),
+      sub_owner: null
+    }
+  };
 }
 
 function tryConnect(url, token, timeoutMs = 3000) {
@@ -108,12 +140,14 @@ async function waitForServer(url, token, maxAttempts = 10) {
  */
 async function ensureServer() {
   const config = loadOrCreateConfig();
+  const governance = loadGovernance();
   const url = `ws://127.0.0.1:${config.port}`;
+  const owner = governance.project?.owner || os.hostname();
 
   // Check if server is already running
   const alive = await tryConnect(url, config.token);
   if (alive) {
-    return { config, url, started: false };
+    return { config, governance, url, started: false };
   }
 
   // Start the server
@@ -126,8 +160,8 @@ async function ensureServer() {
     throw new Error(`Failed to start socket server on port ${config.port}`);
   }
 
-  console.error(`[ACDP Bootstrap] Server started on ${url} (owner: ${config.owner})`);
-  return { config, url, started: true, pid: child.pid };
+  console.error(`[ACDP Bootstrap] Server started on ${url} (owner: ${owner})`);
+  return { config, governance, url, started: true, pid: child.pid };
 }
 
-module.exports = { ensureServer, loadOrCreateConfig, tryConnect };
+module.exports = { ensureServer, loadOrCreateConfig, loadGovernance, tryConnect };

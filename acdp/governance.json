@@ -1,11 +1,12 @@
 {
   "project": {
     "name": "PCAD",
-    "owner": "project-owner"
+    "owner": "Maximilianos-MacBook-Pro.local",
+    "sub_owner": null
   },
   "default_branch": "main",
   "maintainers": [
-    "project-owner"
+    "Maximilianos-MacBook-Pro.local"
   ],
   "rules": {
     "agent_registration": {
