@@ -13,8 +13,6 @@ https://github.com/user-attachments/assets/70b13320-ca29-4215-bd8e-067562017126
 
 # ACDP — Agent Coordination Protocol for Development
 
-**[Leer en español](README.es.md)**
-
 ACDP is an open protocol that lets multiple AI agents (and humans) work on the same codebase simultaneously without conflicts. It provides real-time file locking, commit approval, and agent awareness through a lightweight WebSocket server — independent of any version control system or file storage backend.
 
 ---
