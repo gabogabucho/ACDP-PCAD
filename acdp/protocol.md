@@ -5,50 +5,80 @@
 
 ## Overview
 
-ACDP is a lightweight, file-based coordination protocol for multiple AI agents (and humans) collaborating on the same codebase. All state lives inside the repository. There is no central server.
+ACDP is a coordination protocol for multiple AI agents (and humans) collaborating on the same codebase. Coordination state lives in a **WebSocket server** that runs on an owner machine. All agents connect via an **MCP server** that exposes coordination tools (`check_locks`, `lock_files`, `release_files`, `request_commit`, `notify_sync`, `list_agents`).
 
-Remote hardening adds an optional remote-first coordination mode over Git. When the repository exposes `origin/acdp/state`, that branch becomes the authoritative shared coordination branch for ACDP state.
+The protocol is storage-agnostic — it works regardless of whether the project code lives in Git, a local filesystem, or the cloud. Git is used for code, the socket server is used for coordination.
+
+## Coordination Architecture
+
+```
+  Owner Machine
+  ┌────────────────────────┐
+  │  acdp-socket-server    │
+  │  (WebSocket ws://)     │
+  │  Locks in memory       │
+  └───────────┬────────────┘
+              │
+    ┌─────────┼──────────┐
+    ▼         ▼          ▼
+ Agent A   Agent B    Agent C    (other machines)
+ + MCP     + MCP      + MCP
+```
+
+- **Socket server** (`acdp-socket-server/`): Runs on the owner machine. Holds lock state in memory. Broadcasts changes to all connected agents in real time.
+- **MCP server** (`acdp-mcp-server/`): Runs on each agent's machine. Connects to the socket server and exposes tools for the AI agent to use.
+- **Socket client** (`acdp-socket-client/`): Library used by the MCP server to communicate with the socket server.
+
+### MCP Self-Configuration
+
+When an agent joins the project, the FIRST step is to configure the MCP server connection. The agent reads `acdp-socket-server/config.json` for the port and token, then adds the MCP config to `.mcp.json` (Claude Code) or the equivalent config file for its platform. See `acdp/prompts/join-project.md` for the exact steps.
 
 ## Core Principles
 
-1. **Git is the source of truth** — all coordination state is committed to the repo.
-2. **Declare before you act** — agents must declare intent before modifying any resource.
-3. **Locks prevent conflicts** — only one agent may hold a write lock on a resource at a time.
-4. **Events are append-only** — the event log is a permanent, ordered record of all actions.
-5. **Governance is explicit** — rules for overrides, escalation, and agent management are codified.
-6. **Pull before push** — always pull latest state before modifying any ACDP file.
-7. **Sync before mutate in remote mode** — when `origin/acdp/state` exists, mutations must be based on the latest remote coordination revision.
+1. **The socket server is the source of truth** — lock state lives in the server's memory, shared in real time.
+2. **Declare before you act** — agents must check locks and acquire them before modifying any resource.
+3. **Locks prevent conflicts** — only one agent may hold a lock on a file at a time.
+4. **Commit approval is required** — agents must call `request_commit` and receive approval before committing.
+5. **Notify after commit** — agents must call `notify_sync` after committing so others know to pull.
+6. **Governance is explicit** — rules for overrides, escalation, and agent management are codified.
+7. **Owner/sub-owner failover** — if the owner machine is unavailable, the sub-owner can start the server.
 ---
 
-## Coordination Modes
+## Coordination Mode
 
-As of v0.3, ACDP is **remote-only**. `lock`, `release`, and `cleanup` always operate against `origin/acdp/state` and will fail with an explicit error if that branch does not exist. There is no local-only lock path — coordination state must be shared so all agents can see it in real time.
+As of v0.4, ACDP uses a **WebSocket coordination server** as the single source of truth for locks and agent state. The socket server runs on the owner's machine and all agents connect to it via MCP.
 
-The old commands `lock-remote`, `release-remote`, and `cleanup-remote` have been removed. Use `lock`, `release`, and `cleanup` directly.
+| Component | Role |
+|-----------|------|
+| `acdp-socket-server` | Holds lock state in memory, broadcasts changes, manages commit approval |
+| `acdp-mcp-server` | Exposes MCP tools so AI agents can interact with the socket server |
+| `acdp-socket-client` | Client library used by the MCP server internally |
 
-| Mode | When it applies | Source of coordination truth |
-|------|------------------|------------------------------|
-| Remote-only (default) | Always | `origin/acdp/state` for all coordination mutations |
-| Offline / read-only | `--offline` flag (`finish` command only) | Local `acdp/` files for inspection |
+### How it works
 
-### Remote-first mode
+1. The owner starts `node acdp-socket-server/index.js` on their machine.
+2. Each agent configures the MCP server in their AI tool config (`.mcp.json` for Claude Code).
+3. When the agent's AI session starts, the MCP server connects to the socket server automatically.
+4. The agent uses MCP tools (`lock_files`, `check_locks`, etc.) to coordinate.
+5. The socket server broadcasts lock changes to all connected agents in real time.
 
-- `acdp/state` stores the same coordination artifacts already used by ACDP, including `locks.json`, `events.log`, `agents.md`, and `state.md`.
-- Feature work continues on normal working branches such as `agent/<id>/<task>`.
-- Agents MAY mirror ACDP files on feature branches for convenience, but `origin/acdp/state` is authoritative when present.
-- Tooling MUST report remote coordination availability honestly. It MUST NOT pretend the branch exists when it does not.
+### Lock lifecycle via MCP
 
-### Sync-before-mutate rule
+| Step | MCP Tool | What happens |
+|------|----------|-------------|
+| Check availability | `check_locks` | Agent sees which files are free |
+| Acquire lock | `lock_files` | Server locks files, notifies all agents |
+| Request to commit | `request_commit` | Server auto-approves or sends to owner for manual approval |
+| Commit changes | _(agent commits via git)_ | Agent commits after receiving approval |
+| Notify and release | `notify_sync` | Server broadcasts file changes, auto-releases locks |
 
-In remote-first mode, an agent MUST fetch and resolve the latest `origin/acdp/state` head before any coordination mutation, including:
+### State in memory
 
-- intent declaration tied to a remote lock flow
-- lock acquire / renew / release
-- cleanup of expired locks
-- agent operational status updates
-- `state.md` regeneration or publication
+Lock state lives in the socket server's memory. If the server restarts, all locks are cleared and agents must re-lock. This is by design — a clean restart is safer than restoring potentially stale state.
 
-Each accepted remote mutation MUST record the remote coordination revision it observed as `base_coord_rev`. Retrying with an old `base_coord_rev` after the remote head changed is invalid.
+The server persists only:
+- `config.json` — configured by the human (owner, sub-owner, approval paths, token)
+- `acdp-socket-events.log` — append-only JSONL audit trail (not used to reconstruct state)
 
 ## Synchronization
 

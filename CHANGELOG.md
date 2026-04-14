@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.4.0 — WebSocket Coordination + MCP
+
+### Breaking Changes
+
+- **Coordination now uses a WebSocket server** instead of Git-based `origin/acdp/state`. Lock state lives in the socket server's memory. All agents connect via MCP.
+- **Agents self-configure MCP** on join. The `join-project.md` and `init-project.md` prompts instruct agents to read `acdp-socket-server/config.json` and add the MCP server config automatically.
+
+### New Modules
+
+- **`acdp-socket-server/`** — WebSocket coordination server with in-memory lock state, commit approval engine (auto/manual by path), token auth with owner/sub-owner roles, and JSONL audit logging.
+- **`acdp-socket-client/`** — Client library with auto-reconnect, exponential backoff, and promise-based commands.
+- **`acdp-mcp-server/`** — MCP server exposing 6 tools (`check_locks`, `lock_files`, `release_files`, `request_commit`, `notify_sync`, `list_agents`) plus a coordination-protocol prompt.
+
+### Documentation
+
+- `protocol.md` updated to document WebSocket coordination as the primary mode.
+- `join-project.md` and `init-project.md` rewritten with MCP self-configuration instructions.
+- `README.md` updated with new architecture, setup guide, and visual overview.
+
+---
+
 ## v0.3.0 — Remote-Only Coordination
 
 ### Breaking Changes

@@ -90,34 +90,38 @@ Rules are defined about who can participate, how decisions are made, and who can
 
 ## Architecture
 
-ACDP is implemented inside the repository through a standard structure:
+ACDP has two layers: coordination (socket-based) and protocol files (in the repository).
 
 ```
-/acdp/
-  protocol.md            # Coordination rules
-  architecture.md        # Module map and ownership
-  state.md               # Current system snapshot
-  agents.md              # Active agent roster
-  events.log             # JSONL event log ({ type, agent, timestamp, data })
-  locks.json             # Canonical lock store ({ "locks": [...] })
-  governance.json        # Authority and override rules
-  agents.registry.json   # Trusted agent definitions
-  messages.schema.json   # JSON Schema for message validation
-  cli.js                 # Protocol-safe CLI entrypoint
-  lock-manager.js        # TTL-backed lock lifecycle manager
-  export-logs.js         # Gzip exporter for events.log snapshots
-  log-exports/           # Generated log archives (Git-ignored)
+/acdp-socket-server/       # WebSocket coordination server (runs on owner machine)
+  index.js                 # Server entry point
+  state.js                 # In-memory lock/agent state
+  handlers.js              # Message handlers (lock, release, commit, etc.)
+  approval-engine.js       # Auto/manual commit approval logic
+  auth.js                  # Token auth + owner/sub-owner roles
+  logger.js                # JSONL audit log
+  config.json              # Server config (port, token, owner, approval paths)
+
+/acdp-socket-client/       # Client library (used by MCP server)
+  index.js                 # WebSocket client with auto-reconnect
+  commands.js              # Promise-based command helpers
+
+/acdp-mcp-server/          # MCP server (runs on each agent's machine)
+  index.js                 # MCP entry point (stdio transport)
+  tools.js                 # MCP tools: check_locks, lock_files, etc.
+  prompts.js               # Coordination protocol prompt for AI agents
+
+/acdp/                     # Protocol files (in the repository)
+  protocol.md              # Coordination rules
+  architecture.md          # Module map and ownership
+  state.md                 # Current system snapshot
+  agents.md                # Active agent roster
+  governance.json          # Authority and override rules
+  agents.registry.json     # Trusted agent definitions
+  messages.schema.json     # JSON Schema for message validation
   prompts/
-    init-project.md      # Prompt to start a project with ACDP
-    join-project.md      # Prompt for an agent to join a project
-  examples/
-    simulation-php.md    # Full simulation with 3 agents
-    simulation-stress-test.md
-    pattern-100-percent-ai.md
-    pattern-100-percent-ai.es.md
-/scripts/
-  git-hooks/
-    pre-commit           # Versioned protocol guard (manual opt-in)
+    init-project.md        # Prompt to initialize a project with ACDP
+    join-project.md        # Prompt for an agent to join a project
 ```
 
 ---
@@ -125,56 +129,56 @@ ACDP is implemented inside the repository through a standard structure:
 ## Visual Overview
 
 ```
-                ┌──────────────────────────────────┐
-                │           Repository             │
-                │                                  │
-                │   Project source code            │
-                │   (/src, /api, etc.)             │
-                │                                  │
-                │   ┌──────────────────────────┐   │
-                │   │         /acdp/           │   │
-                │   │                          │   │
-                │   │  protocol.md             │   │
-                │   │  architecture.md         │   │
-                │   │  messages.schema.json    │   │
-                │   │  cli.js                  │◄─────────┐
-                │   │  lock-manager.js         │◄──────┐  │
-                │   │  state.md                │◄────┐ │  │
-                │   │  agents.md               │◄──┐ │ │  │
-                │   │  locks.json              │◄┐ │ │ │  │
-                │   │  events.log (JSONL)      │◄┼─┘ │ │  │
-                │   │  export-logs.js          │  │   │ │  │
-                │   └──────────────────────────┘  │   │ │  │
-                │   /scripts/git-hooks/pre-commit│◄──┘ │  │
-                └──────────────────────────────────┴────┴──┘
-                                                     ▲
-        ┌──────────────┐       ┌──────────────┐      │
-        │   Agent 01   │       │   Agent 02   │      │
-        │ (AI / human) │       │ (AI / human) │      │
-        └──────┬───────┘       └──────┬───────┘      │
-               │                      │              │
-               ├──── read state ──────┼──────────────┤
-               ├── declare intent ────┼──────────────┤
-               ├─ acquire/renew lock ─┼──────────────┤
-               ├──── cleanup/watch ───┼──────────────┤
-               ├──── release/complete ┼──────────────┤
-               └──── export logs ─────┴──────────────┘
+        Owner Machine
+        ┌───────────────────────────┐
+        │   acdp-socket-server      │
+        │   (WebSocket ws://:3100)  │
+        │                           │
+        │   Locks in memory         │
+        │   Commit approval engine  │
+        │   Audit log (JSONL)       │
+        └─────────┬─────────────────┘
+                  │ WebSocket
+        ┌─────────┼─────────────┐
+        │         │             │
+        ▼         ▼             ▼
+   ┌─────────┐ ┌─────────┐ ┌─────────┐
+   │ Machine │ │ Machine │ │ Machine │
+   │    A    │ │    B    │ │    C    │
+   │         │ │         │ │         │
+   │ Agent   │ │ Agent   │ │ Agent   │
+   │ + MCP   │ │ + MCP   │ │ + MCP   │
+   └────┬────┘ └────┬────┘ └────┬────┘
+        │           │           │
+        └───────────┼───────────┘
+                    │
+                    ▼
+             Git Repository
+            (code only)
 ```
+
+### Agent workflow via MCP
+
+1. Agent calls `check_locks` → sees available files
+2. Agent calls `lock_files` → server locks, notifies all
+3. Agent works locally on locked files
+4. Agent calls `request_commit` → server approves
+5. Agent commits and pushes to Git
+6. Agent calls `notify_sync` → server notifies all, releases locks
 
 ---
 
 ## Workflow
 
-1. An agent accesses the repository
-2. Reads the current state in `/acdp/`
-3. Registers as an active agent
-4. Declares its intent
-5. Checks resource availability
-6. Acquires a logical lock
-7. Makes changes on its own branch
-8. Logs relevant events
-9. Releases the lock
-10. Updates the shared state
+1. Owner starts the socket server (`node acdp-socket-server/index.js`)
+2. Agent configures MCP server (auto-configured via prompts — see `acdp/prompts/join-project.md`)
+3. Agent reads protocol and registers in `acdp/agents.registry.json`
+4. Agent calls `check_locks` to see available files
+5. Agent calls `lock_files` for the files it needs
+6. Agent works on its own branch
+7. Agent calls `request_commit` and waits for approval
+8. Agent commits and pushes
+9. Agent calls `notify_sync` — locks auto-released, all agents notified
 
 ---
 
@@ -204,63 +208,50 @@ Unrecognized agents can be ignored by the system.
 
 ---
 
-## 🛠️ ACDP CLI Automation
+## Setup
 
-To avoid token bloat and prevent manual JSON tampering mistakes, ACDP ships with a built-in CLI utility (`acdp/cli.js`).
+### 1. Start the socket server (owner machine)
 
-**Lock operations must go through the CLI.** Do not hand-edit `acdp/locks.json` or append ad-hoc JSON to `acdp/events.log` for normal lock lifecycle operations.
+```bash
+cd acdp-socket-server
+npm install
+# Edit config.json: set your hostname as owner, choose a token
+node index.js
+```
 
-The CLI is backed by `acdp/lock-manager.js`, which enforces a TTL-backed lock lifecycle: lock acquisition, same-agent renewal, expired-lock cleanup, conflict detection across file/directory scopes, and canonical persistence back into `acdp/locks.json`.
+### 2. Agent self-configuration (automatic)
 
-Agents can execute protocol-safe operations natively:
-- `node acdp/cli.js lock "src/file.js" file "Implementing feature" 30`
-- `node acdp/cli.js release "src/file.js" "Feature complete"`
-- `node acdp/cli.js status`
-- `node acdp/cli.js cleanup` (Removes expired locks and emits schema-compliant `release` events with `data.expired: true`.)
-- `node acdp/cli.js batch "refresh-cache" "src/cache/data.json" 5 file` (For short scripted intent → lock → release flows.)
-- `node acdp/cli.js finish [--json] [--offline]` (Globally declares the project explicitly finished; remote-aware when `origin/acdp/state` exists.)
-- `node acdp/cli.js watch` (Spawns a real-time terminal radar and shows lock TTL context when relevant.)
-- `node acdp/cli.js subscribe` (Streams raw JSONL events to stdout; exits on SIGINT. Useful for MCP/A2A integration.)
-- `node acdp/cli.js override-release <agent-id> [--json]` (Maintainer-only: force-releases all locks held by the specified agent.)
-- `node acdp/export-logs.js` (Exports `events.log` to a gzip archive under `acdp/log-exports/`, which is ignored by Git.)
+When an AI agent joins the project using `acdp/prompts/join-project.md`, it will:
+1. Read `acdp-socket-server/config.json` to find the port and token
+2. Add the MCP server config to `.mcp.json` (Claude Code) or the equivalent config file
+3. Start using MCP tools (`check_locks`, `lock_files`, etc.) to coordinate
 
-The CLI keeps protocol artifacts aligned with the documented format:
-- `acdp/locks.json` uses the canonical object shape `{ "locks": [...] }`
-- `acdp/events.log` entries use `{ type, agent, timestamp, data }` JSONL records compatible with `acdp/messages.schema.json`
-- `cleanup`, `batch`, and normal `release` flows emit canonical `release`/`complete` events instead of legacy payload shapes
-- `watch` renders the live JSONL stream without changing protocol state, while `export-logs` snapshots it for audit/archive workflows
+No manual MCP setup needed — the agent configures itself.
 
-### Remote-first hardening
+### 3. MCP Tools available to agents
 
-ACDP now supports an additive remote-first coordination mode over Git.
+| Tool | Description |
+|------|-------------|
+| `check_locks` | List all active file locks |
+| `lock_files` | Lock files before modifying (fails if already locked) |
+| `release_files` | Release your locks |
+| `request_commit` | Request permission to commit (auto-approve or manual) |
+| `notify_sync` | After commit: notify all agents, auto-release locks |
+| `list_agents` | List connected agents and their status |
 
-- If `origin/acdp/state` exists, treat that branch as the authoritative coordination branch.
-- Remote mutations must sync before mutate: fetch/read the latest coordination head first, then publish from that exact revision.
-- Remote lock lifecycle metadata now carries `lock_id` and `base_coord_rev`, while preserving the existing JSONL event shape.
-- If `origin/acdp/state` does not exist, the CLI falls back to the existing local/legacy behavior.
+### 4. Commit approval
 
-Useful commands:
+By default, `request_commit` auto-approves if the agent holds the lock for all requested files. Configure `manual_approval_paths` in `acdp-socket-server/config.json` to require manual owner approval for specific paths:
 
-- `node acdp/cli.js sync` — fetches and reports the current remote coordination head when available.
-- `node acdp/cli.js status --remote` — shows remote coordination availability, head revision, authoritative remote health, expected feature-branch divergence, stale coordination snapshot signals, and local protocol diffs vs the authoritative branch.
-- `node acdp/cli.js status --remote --json` — same data in machine-readable form.
-- `node acdp/cli.js lock "src/file.js" file "Implement feature" 30` — acquires or renews a lock on `origin/acdp/state`, with bounded retry on remote-head races. Records `branch` (current working branch) and `base_branch` (project principal branch from `governance.json → default_branch`).
-- `node acdp/cli.js release "src/file.js" "Feature complete"` — releases a lock on `origin/acdp/state` and appends compatible lifecycle events on the coordination branch.
-- `node acdp/cli.js renew "src/file.js" 45` — explicitly renews an existing lock by resource or `lock_id`; preserves `lock_id` and refreshes `base_coord_rev`.
-- `node acdp/cli.js cleanup` — safely removes only locks still expired on the latest remote base and emits compatible `release` events with `expired: true`.
-- `node acdp/cli.js heartbeat "still working"` — appends a lightweight schema-compatible liveness `update`, remote-aware when `origin/acdp/state` exists.
-- `node acdp/cli.js doctor --json` — reports remote readiness, branch health, protocol file sanity, authoritative remote parse errors, and locks held by the current agent. It exits non-zero when health fails.
+```json
+{
+  "manual_approval_paths": ["src/core/**", "config/**"]
+}
+```
 
-Remote observability notes:
+### 5. Failover
 
-- `local_stale` remains in JSON output as a backward-compatible alias for `local_protocol_differs_from_remote`.
-- Expected divergence between a feature branch and `acdp/state` is now reported separately from an actually stale coordination snapshot.
-- If authoritative `locks.json` or `events.log` on `origin/acdp/state` are malformed, observability commands report that explicitly and health fails instead of silently treating them as empty.
-
-The hardened flow intentionally keeps `locks.json` and `events.log` as the canonical coordination files; the change is *where* they are published and *how* tooling proves freshness.
-
-Operator migration guidance is available in [`docs/remote-operations.md`](docs/remote-operations.md).
-Practical remote trial notes and signal interpretation guidance are available in [`docs/remote-simulation-notes.md`](docs/remote-simulation-notes.md).
+If the owner machine is unavailable, the sub-owner (configured in `config.json`) can start the server on their machine. Agents reconnect automatically.
 
 **Definition of DONE (Exit Clause):**
 When the project's `state.md` is marked with `Status: DONE` (enforced natively via `node acdp/cli.js finish`), all participating agents MUST immediately cease operations, abandon internal task-seeking loops, and formally log off. Ongoing automated tasks should be aborted.

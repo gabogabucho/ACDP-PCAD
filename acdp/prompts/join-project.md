@@ -7,67 +7,73 @@ Use this prompt to instruct an AI agent to join a project that already uses ACDP
 ## Prompt (copy and paste)
 
 ```
-You are an AI agent joining an existing software project that uses ACDP (Agent Coordination Protocol for Development) for multi-agent coordination.
+You are an AI agent joining an existing software project that uses ACDP (Agent Coordination Protocol for Development) for multi-agent coordination via a WebSocket coordination server.
 
 Before writing ANY code, you MUST follow this onboarding sequence:
 
-1. **Read the protocol**:
+1. **Connect to the coordination server**:
+   - Read `acdp-socket-server/config.json` to find the server port and token.
+   - Check if the ACDP MCP server is already configured. If using Claude Code, check `.mcp.json` in the project root. If using Claude Desktop, check `claude_desktop_config.json`.
+   - If the MCP server is NOT configured, add it now. For Claude Code, create or edit `.mcp.json` in the project root:
+     ```json
+     {
+       "mcpServers": {
+         "acdp": {
+           "command": "node",
+           "args": ["acdp-mcp-server/index.js"],
+           "env": {
+             "ACDP_SOCKET_URL": "ws://<server-ip>:3100",
+             "ACDP_AGENT_ID": "your-agent-id",
+             "ACDP_TOKEN": "<token from config.json>"
+           }
+         }
+       }
+     }
+     ```
+   - Replace `<server-ip>` with the IP of the machine running the socket server (use `127.0.0.1` if local). Replace `your-agent-id` with a unique identifier (e.g., `claude-agent-1`). Replace `<token>` with the token from `acdp-socket-server/config.json`.
+   - After adding the config, the MCP tools will be available: `check_locks`, `lock_files`, `release_files`, `request_commit`, `notify_sync`, `list_agents`.
+
+2. **Read the protocol**:
    - Read `acdp/protocol.md` completely. This is your operating manual.
    - Read `acdp/architecture.md` to understand module boundaries, ownership, and restricted areas.
-   - Read `acdp/governance.json` to understand authority rules and confirm `default_branch` is set (e.g., `"default_branch": "main"`).
-   - Run `node acdp/cli.js doctor` to verify `origin/acdp/state` is reachable. If it is not, STOP and ask the project owner to set it up before proceeding.
+   - Read `acdp/governance.json` to understand authority rules.
 
-2. **Understand current state**:
+3. **Understand current state**:
    - Read `acdp/state.md` for a summary of what's happening.
    - **CRITICAL**: If `acdp/state.md` states `Status: DONE`, you must immediately STOP, exit the operation, and definitively report that the project is finished without touching the codebase.
-   - Execute `node acdp/cli.js status` to easily view active locks and general state.
-   - Read `acdp/agents.md` to see who else is working and on what.
+   - Call `check_locks` to see active locks.
+   - Call `list_agents` to see who else is connected and working.
 
-3. **Register yourself**:
+4. **Register yourself**:
    - Add your entry to `acdp/agents.registry.json` with id, role, and permissions.
    - Add yourself to `acdp/agents.md` with status `idle`.
-   - Append a `register` message to `acdp/events.log`.
-   - Commit: `chore(acdp): register agent your-id [agent:your-id]`
 
-4. **Declare intent BEFORE working**:
+5. **Declare intent and acquire locks BEFORE modifying files**:
    - Decide what you will work on based on the current state and pending tasks.
-   - AVOID resources that are currently locked by other agents.
-   - Update your entry in `acdp/agents.md` with your task, branch, and status `working`.
-   - Append an `intent` message to `acdp/events.log`.
-
-5. **Acquire locks BEFORE modifying files**:
-   - Run `node acdp/cli.js status` to check if your resource is free. If requested resource is locked, DO NOT proceed.
-   - Execute `node acdp/cli.js lock <resource> <scope> "<reason>" [ttlMinutes]`.
-   - DO NOT edit `acdp/locks.json` manually. Lock acquisition, renewal, release, and expired-lock cleanup must go through the CLI so the protocol state stays schema-compliant.
-   - If `status` shows expired locks blocking your work, execute `node acdp/cli.js cleanup` before continuing.
-   - If you need a resource held by another agent, send a `request` message and wait for their `ack`.
+   - Call `check_locks` to verify your files are free. If locked, DO NOT proceed — pick different files or wait.
+   - Call `lock_files` with the list of files you need and a reason.
+   - If you need a file held by another agent, communicate with them before proceeding.
 
 6. **Work on your task**:
-   - Work ONLY on your declared branch: `agent/your-id/task-name`
+   - Work ONLY on files you have locked.
    - Commit with: `type(scope): description [agent:your-id]`
-   - If you discover you need additional resources, acquire new locks first.
-   - If you encounter a conflict, send a `block` message and escalate if needed.
+   - Use branch naming: `agent/your-id/task-name`
+   - If you discover you need additional files, lock them first with `lock_files`.
 
-7. **Communicate proactively**:
-   - If another agent sends you a `request`, respond with `ack` (accepted: true/false).
-   - If you expose a new interface that others might need, send a `notify` message.
-   - If your work will take longer, send an `update` message with your progress.
-
-8. **When done**:
-   - Execute `node acdp/cli.js release <resource> "<resolution description>"` for ALL your locks.
+7. **When done**:
+   - Call `request_commit` with the files you changed and a summary. Wait for approval.
+   - After approval, commit and push your changes.
+   - Call `notify_sync` with the changed files and a description. This notifies all other agents and auto-releases your locks.
    - Update your status to `idle` in `acdp/agents.md`.
    - Update `acdp/state.md` to reflect the current state.
 
 CRITICAL RULES:
-- NEVER skip registration. Unregistered agents are ignored.
-- NEVER modify a resource without holding its lock.
-- NEVER hand-edit `acdp/locks.json` for normal lock lifecycle operations; always use the CLI.
+- NEVER skip MCP configuration. Without it you cannot coordinate with other agents.
+- NEVER modify a file without holding its lock via `lock_files`.
+- NEVER skip the `request_commit` step — commit approval is required.
+- ALWAYS call `notify_sync` after committing so other agents know to pull.
 - NEVER modify `acdp/protocol.md` or `acdp/governance.json` — these require owner approval.
-- The old `lock-remote`, `release-remote`, and `cleanup-remote` commands no longer exist. Use `lock`, `release`, and `cleanup` directly.
-- Check `acdp/events.log` regularly for `request` and `notify` messages directed at you.
-- Respect lock hierarchy: a directory lock blocks all files within it.
-- All messages in `events.log` are append-only — NEVER delete or modify past entries.
-- All lock and release operations push directly to `origin/acdp/state` so every agent sees the current state in real time.
+- All coordination happens through the socket server via MCP tools. Do NOT edit `acdp/locks.json` manually.
 ```
 
 ---
