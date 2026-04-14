@@ -18,7 +18,7 @@ See also [`remote-operations.md`](remote-operations.md) for the operating playbo
 
 - One agent
 - `origin/acdp/state` available
-- Standard flow: sync → `lock-remote` → work → `heartbeat` → `renew` → `release-remote`
+- Standard flow: sync → `lock` → work → `heartbeat` → `renew` → `release`
 
 ### What passed
 
@@ -82,7 +82,7 @@ See also [`remote-operations.md`](remote-operations.md) for the operating playbo
 - If the lock is present and fresh remotely, renew from the new base.
 - If there is doubt, act as if ownership is gone until proven otherwise.
 
-## Trial 4 — `cleanup-remote` during a renewal race
+## Trial 4 — `cleanup` during a renewal race
 
 ### Setup
 

@@ -278,6 +278,10 @@ function acquireLock(options) {
     nextLock.branch = options.branch;
   }
 
+  if (options.baseBranch) {
+    nextLock.base_branch = options.baseBranch;
+  }
+
   if (renewal) {
     locks[existingIndex] = nextLock;
   } else {

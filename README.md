@@ -244,10 +244,10 @@ Useful commands:
 - `node acdp/cli.js sync` — fetches and reports the current remote coordination head when available.
 - `node acdp/cli.js status --remote` — shows remote coordination availability, head revision, authoritative remote health, expected feature-branch divergence, stale coordination snapshot signals, and local protocol diffs vs the authoritative branch.
 - `node acdp/cli.js status --remote --json` — same data in machine-readable form.
-- `node acdp/cli.js lock-remote "src/file.js" file "Implement feature" 30` — acquires or renews a lock on `origin/acdp/state`, with bounded retry on remote-head races.
-- `node acdp/cli.js release-remote "src/file.js" "Feature complete"` — releases a remote lock and appends compatible lifecycle events on the coordination branch.
-- `node acdp/cli.js renew "src/file.js" 45` — explicitly renews an existing lock by resource or `lock_id`; in remote mode it preserves `lock_id` and refreshes `base_coord_rev`.
-- `node acdp/cli.js cleanup-remote` — safely removes only locks still expired on the latest remote base and emits compatible `release` events with `expired: true`.
+- `node acdp/cli.js lock "src/file.js" file "Implement feature" 30` — acquires or renews a lock on `origin/acdp/state`, with bounded retry on remote-head races. Records `branch` (current working branch) and `base_branch` (project principal branch from `governance.json → default_branch`).
+- `node acdp/cli.js release "src/file.js" "Feature complete"` — releases a lock on `origin/acdp/state` and appends compatible lifecycle events on the coordination branch.
+- `node acdp/cli.js renew "src/file.js" 45` — explicitly renews an existing lock by resource or `lock_id`; preserves `lock_id` and refreshes `base_coord_rev`.
+- `node acdp/cli.js cleanup` — safely removes only locks still expired on the latest remote base and emits compatible `release` events with `expired: true`.
 - `node acdp/cli.js heartbeat "still working"` — appends a lightweight schema-compatible liveness `update`, remote-aware when `origin/acdp/state` exists.
 - `node acdp/cli.js doctor --json` — reports remote readiness, branch health, protocol file sanity, authoritative remote parse errors, and locks held by the current agent. It exits non-zero when health fails.
 

@@ -14,7 +14,8 @@ Before writing ANY code, you MUST follow this onboarding sequence:
 1. **Read the protocol**:
    - Read `acdp/protocol.md` completely. This is your operating manual.
    - Read `acdp/architecture.md` to understand module boundaries, ownership, and restricted areas.
-   - Read `acdp/governance.json` to understand authority rules.
+   - Read `acdp/governance.json` to understand authority rules and confirm `default_branch` is set (e.g., `"default_branch": "main"`).
+   - Run `node acdp/cli.js doctor` to verify `origin/acdp/state` is reachable. If it is not, STOP and ask the project owner to set it up before proceeding.
 
 2. **Understand current state**:
    - Read `acdp/state.md` for a summary of what's happening.
@@ -62,9 +63,11 @@ CRITICAL RULES:
 - NEVER modify a resource without holding its lock.
 - NEVER hand-edit `acdp/locks.json` for normal lock lifecycle operations; always use the CLI.
 - NEVER modify `acdp/protocol.md` or `acdp/governance.json` — these require owner approval.
+- The old `lock-remote`, `release-remote`, and `cleanup-remote` commands no longer exist. Use `lock`, `release`, and `cleanup` directly.
 - Check `acdp/events.log` regularly for `request` and `notify` messages directed at you.
 - Respect lock hierarchy: a directory lock blocks all files within it.
 - All messages in `events.log` are append-only — NEVER delete or modify past entries.
+- All lock and release operations push directly to `origin/acdp/state` so every agent sees the current state in real time.
 ```
 
 ---

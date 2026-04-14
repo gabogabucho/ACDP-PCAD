@@ -22,12 +22,14 @@ Remote hardening adds an optional remote-first coordination mode over Git. When 
 
 ## Coordination Modes
 
-As of v0.2, ACDP is **remote-first**. `lock-remote` and `release-remote` require `origin/acdp/state` to exist and will fail with an explicit error if it does not. Use `--offline` for read-only inspection when the remote is unavailable.
+As of v0.3, ACDP is **remote-only**. `lock`, `release`, and `cleanup` always operate against `origin/acdp/state` and will fail with an explicit error if that branch does not exist. There is no local-only lock path — coordination state must be shared so all agents can see it in real time.
+
+The old commands `lock-remote`, `release-remote`, and `cleanup-remote` have been removed. Use `lock`, `release`, and `cleanup` directly.
 
 | Mode | When it applies | Source of coordination truth |
 |------|------------------|------------------------------|
-| Remote-first (default) | `origin/acdp/state` exists | `origin/acdp/state` for all coordination mutations |
-| Offline / local | `--offline` flag or legacy local commands | The current branch's `acdp/` files |
+| Remote-only (default) | Always | `origin/acdp/state` for all coordination mutations |
+| Offline / read-only | `--offline` flag (`finish` command only) | Local `acdp/` files for inspection |
 
 ### Remote-first mode
 
@@ -115,13 +117,27 @@ The following ACDP files MUST exist before agents can register:
 
 For new projects, `architecture.md` describes the **planned structure**. For existing projects, it documents the **current structure**.
 
+### governance.json Required Fields
+
+`governance.json` MUST include a `default_branch` field at the top level:
+
+```json
+{
+  "default_branch": "main",
+  ...
+}
+```
+
+This field tells the CLI which branch is the project's principal branch. It is recorded on every lock as `base_branch` so all agents know the integration target without having to ask.
+
 ### Initialization Sequence
 
 1. The project owner creates the `/acdp/` directory and all required files.
 2. The owner defines `architecture.md` with the module structure.
-3. The owner configures `governance.json` with authority rules.
-4. The owner commits and pushes. The project is now ACDP-ready.
-5. Agents may begin registering (see section 1).
+3. The owner configures `governance.json` with authority rules and `default_branch`.
+4. The owner creates and pushes `origin/acdp/state` as the authoritative coordination branch.
+5. The owner commits and pushes the main branch. The project is now ACDP-ready.
+6. Agents verify readiness with `node acdp/cli.js doctor` before registering (see section 1).
 
 ---
 
@@ -218,17 +234,18 @@ Locks grant exclusive write access to a resource (file, module, or directory).
     - `acquired_at`: ISO 8601 timestamp
     - `expires_at`: ISO 8601 timestamp (default TTL from `governance.json` → `lock_defaults.ttl_minutes`)
     - `reason`: brief description of why the lock is needed
-    - `lock_id`: unique identifier for the lock lifecycle (required in remote-first mode; additive elsewhere)
-    - `base_coord_rev`: remote coordination revision observed before the mutation (required in remote-first mode)
-    - `branch`: agent working branch when relevant
+    - `lock_id`: unique identifier for the lock lifecycle
+    - `base_coord_rev`: remote coordination revision observed before the mutation
+    - `branch`: agent working branch (feature branch where code changes will be committed)
+    - `base_branch`: project principal branch from `governance.json` → `default_branch` (e.g., `main`)
 5. Append a `lock` message to `events.log`.
-6. Commit and push the changes.
+6. The CLI publishes the updated `locks.json` and `events.log` directly to `origin/acdp/state` and then mirrors the result back to the local `acdp/` directory. No manual commit or push is required.
 
 ### Releasing a Lock
 
 1. Remove the lock entry from `locks.json`.
 2. Append a `release` message to `events.log`.
-3. Commit and push the changes.
+3. The CLI publishes the change to `origin/acdp/state` and mirrors locally. No manual commit or push is required.
 
 ### Lock Expiration
 

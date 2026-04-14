@@ -3,6 +3,7 @@
     "name": "PCAD",
     "owner": "project-owner"
   },
+  "default_branch": "main",
   "maintainers": [
     "project-owner"
   ],

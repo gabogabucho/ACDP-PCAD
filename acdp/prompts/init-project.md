@@ -25,6 +25,8 @@ Your tasks:
 
 3. **Set governance**:
    - Update `acdp/governance.json` with the project name and yourself as owner and maintainer.
+   - Set `"default_branch"` to the project's principal branch (e.g., `"default_branch": "main"`). This is required — the CLI reads it to record the base branch on every lock.
+   - Create and push the coordination branch: `git checkout --orphan acdp/state && git rm -rf . && cp -r acdp/ . && git add acdp/ && git commit -m "chore(acdp): init coordination branch" && git push origin acdp/state && git checkout main`. Verify with `node acdp/cli.js doctor`.
 
 4. **Declare your first intent**:
    - Choose a task to start with.
@@ -45,9 +47,11 @@ Your tasks:
    - If you are marking the entire project lifecycle as finished, execute `node acdp/cli.js finish`.
 
 IMPORTANT RULES:
-- Always read `acdp/locks.json` before modifying any file to check for active locks.
+- Always run `node acdp/cli.js status` before modifying any file to check for active locks.
 - Always declare intent BEFORE acquiring locks (handled automatically by the CLI).
 - Never modify `acdp/governance.json` or `acdp/protocol.md` without owner approval.
+- Use `node acdp/cli.js lock` and `node acdp/cli.js release` — the old `-remote` variants no longer exist.
+- All lock/release/cleanup operations publish directly to `origin/acdp/state` so all agents see changes in real time.
 - We strongly recommend using `node acdp/cli.js` instead of modifying `events.log` manually to preserve JSONL integrity.
 - Use structured JSON messages following the schema in `acdp/messages.schema.json`.
 ```

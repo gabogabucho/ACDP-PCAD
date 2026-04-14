@@ -42,6 +42,15 @@ function getCurrentBranch() {
   }
 }
 
+function getDefaultBranch() {
+  try {
+    const gov = JSON.parse(fs.readFileSync(path.join(ACDP_DIR, 'governance.json'), 'utf8'));
+    return gov.default_branch || 'main';
+  } catch {
+    return 'main';
+  }
+}
+
 function ensureEventsLogExists() {
   if (!fs.existsSync(EVENTS_LOG)) {
     fs.writeFileSync(EVENTS_LOG, '');
@@ -317,14 +326,6 @@ function describeLockHolder(lock) {
   return details.join(', ');
 }
 
-function buildEventData(resource, lockId, branch, baseCoordRev) {
-  const data = { resource };
-  if (lockId != null) data.lock_id = lockId;
-  if (branch != null) data.branch = branch;
-  if (baseCoordRev != null) data.base_coord_rev = baseCoordRev;
-  return data;
-}
-
 function findConflictingLock(locks, resource, scope, agentId) {
   const normalizedScope = lockManager.normalizeScope(resource, scope);
   const normalizedResource = lockManager.normalizeResource(resource, normalizedScope);
@@ -397,49 +398,17 @@ function summarizeRemoteStatus(snapshot) {
 }
 
 function lockResource(resource, scope, reason, ttlMinutes, options = {}) {
-  if (!options.skipSyncWarning) {
-    console.warn('[ACDP] WARNING: local lock does not auto-pull. Run `git pull` first to honor the sync-before-lock rule (protocol §3).');
-  }
-
-  cleanupExpiredLocks({ logEvents: true });
-
   const branch = getCurrentBranch();
-  const task = reason || `Work on ${resource}`;
-  appendEvent('intent', { task, branch, resources: [resource] });
-
-  const lockId = createLockId();
-  const result = lockManager.acquireLock({
-    resource,
-    scope,
-    reason: task,
-    ttlMinutes,
-    agentId: getAgentId(),
-    lockId
-  });
-
-  appendEvent('lock', {
-    resource: result.lock.resource,
-    scope: result.lock.scope,
-    reason: result.lock.reason,
-    ttl_minutes: result.ttlMinutes,
-    ...(result.lock.lock_id ? { lock_id: result.lock.lock_id } : {}),
-    ...(result.renewal ? { renewal: true } : {})
-  });
-
-  if (options.json) {
-    console.log(JSON.stringify({ status: result.renewal ? 'renewed' : 'locked', lock_id: result.lock.lock_id || null, resource: result.lock.resource, ttl_minutes: result.ttlMinutes, base_coord_rev: null }));
-  } else {
-    console.log(`[ACDP] ${result.renewal ? 'Renewed' : 'Locked'} '${result.lock.resource}' until ${result.lock.expires_at}.`);
-  }
-}
-
-function lockRemoteResource(resource, scope, reason, ttlMinutes, options = {}) {
-  const branch = getCurrentBranch();
+  const baseBranch = getDefaultBranch();
   const task = reason || `Work on ${resource}`;
   const snapshot = getCoordinationSnapshot();
 
   if (!snapshot.available) {
-    throw new Error('ACDP remote unreachable. Use --offline for read-only mode.');
+    throw new Error(
+      'Remote coordination branch (origin/acdp/state) not found.\n' +
+      'Locks must be published remotely so all agents can see them.\n' +
+      'Set up origin/acdp/state first. See docs/remote-operations.md for instructions.'
+    );
   }
 
   const result = coordinationBranch.publishRemoteMutation({
@@ -480,6 +449,7 @@ function lockRemoteResource(resource, scope, reason, ttlMinutes, options = {}) {
         ttlMinutes,
         agentId: getAgentId(),
         branch,
+        baseBranch,
         lockId,
         baseCoordRev,
         locksJson,
@@ -492,6 +462,7 @@ function lockRemoteResource(resource, scope, reason, ttlMinutes, options = {}) {
         reason: lockResult.lock.reason,
         ttl_minutes: lockResult.ttlMinutes,
         branch,
+        base_branch: baseBranch,
         lock_id: lockResult.lock.lock_id,
         base_coord_rev: baseCoordRev,
         ...(lockResult.renewal ? { renewal: true } : {})
@@ -522,51 +493,15 @@ function lockRemoteResource(resource, scope, reason, ttlMinutes, options = {}) {
 }
 
 function renewResource(identifier, ttlMinutes) {
+  const branch = getCurrentBranch();
   const snapshot = getCoordinationSnapshot();
 
-  if (snapshot.available) {
-    renewRemoteResource(identifier, ttlMinutes, snapshot);
-    return;
-  }
-
-  const existingLock = resolveLockByIdentifier(lockManager.loadLocks(), identifier, getAgentId());
-  const { clockSkewToleranceSeconds } = lockManager.getLockDefaults();
-
-  if (lockManager.isExpired(existingLock, new Date(), clockSkewToleranceSeconds)) {
-    throw new Error(`Lock '${existingLock.resource}' is expired. Reacquire it instead of renewing.`);
-  }
-
-  const renewed = lockManager.acquireLock({
-    resource: existingLock.resource,
-    scope: existingLock.scope,
-    reason: existingLock.reason || `Work on ${existingLock.resource}`,
-    ttlMinutes,
-    agentId: getAgentId(),
-    branch: existingLock.branch || getCurrentBranch(),
-    lockId: existingLock.lock_id
-  });
-
-  appendEvent('lock', {
-    resource: renewed.lock.resource,
-    scope: renewed.lock.scope,
-    reason: renewed.lock.reason,
-    ttl_minutes: renewed.ttlMinutes,
-    renewal: true,
-    branch: renewed.lock.branch,
-    ...(renewed.lock.lock_id ? { lock_id: renewed.lock.lock_id } : {})
-  });
-
-  console.log(`[ACDP] Renewed '${renewed.lock.resource}' locally until ${renewed.lock.expires_at}.`);
-}
-
-function renewRemoteResource(identifier, ttlMinutes, prefetchedSnapshot = null) {
-  const branch = getCurrentBranch();
-  const snapshot = prefetchedSnapshot || getCoordinationSnapshot();
-
   if (!snapshot.available) {
-    console.log('[ACDP] Remote coordination branch not found; falling back to legacy local mode.');
-    renewResource(identifier, ttlMinutes);
-    return;
+    throw new Error(
+      'Remote coordination branch (origin/acdp/state) not found.\n' +
+      'Locks must be renewed remotely so all agents can see the update.\n' +
+      'Set up origin/acdp/state first. See docs/remote-operations.md for instructions.'
+    );
   }
 
   const result = coordinationBranch.publishRemoteMutation({
@@ -629,9 +564,7 @@ function renewRemoteResource(identifier, ttlMinutes, prefetchedSnapshot = null) 
         renewal: true,
         branch: renewResult.lock.branch,
         lock_id: renewResult.lock.lock_id,
-        base_coord_rev: baseCoordRev,
-        coordination_mode: 'remote-first',
-        coordination_branch: formatCoordinationBranchRef(snapshot)
+        base_coord_rev: baseCoordRev
       }, { eventsLog, silent: true });
 
       return {
@@ -652,39 +585,15 @@ function renewRemoteResource(identifier, ttlMinutes, prefetchedSnapshot = null) 
 }
 
 function releaseResource(resource, summary = 'Task completed', options = {}) {
-  const result = lockManager.releaseLock(resource, { agentId: getAgentId() });
-
-  if (!result.released) {
-    if (result.lock) {
-      throw new Error(`Resource '${result.lock.resource}' is locked by '${result.lock.agent_id}', not '${getAgentId()}'.`);
-    }
-
-    throw new Error(`No lock found for resource '${resource}'.`);
-  }
-
-  const branch = getCurrentBranch();
-  appendEvent('release', buildEventData(result.lock.resource, result.lock.lock_id, branch, null));
-  appendEvent('complete', {
-    task: result.lock.reason || `Work on ${result.lock.resource}`,
-    branch,
-    summary
-  });
-
-  if (options.json) {
-    console.log(JSON.stringify({ status: 'released', resource: result.lock.resource, lock_id: result.lock.lock_id || null }));
-  } else {
-    console.log(`[ACDP] Released '${result.lock.resource}'.`);
-  }
-}
-
-function releaseRemoteResource(resource, summary = 'Task completed', options = {}) {
   const branch = getCurrentBranch();
   const snapshot = getCoordinationSnapshot();
 
   if (!snapshot.available) {
-    console.log('[ACDP] Remote coordination branch not found; falling back to legacy local mode.');
-    releaseResource(resource, summary);
-    return;
+    throw new Error(
+      'Remote coordination branch (origin/acdp/state) not found.\n' +
+      'Locks must be released remotely so all agents can see the update.\n' +
+      'Set up origin/acdp/state first. See docs/remote-operations.md for instructions.'
+    );
   }
 
   const result = coordinationBranch.publishRemoteMutation({
@@ -755,10 +664,11 @@ function cleanupRemoteExpiredLocks() {
   const snapshot = getCoordinationSnapshot();
 
   if (!snapshot.available) {
-    console.log('[ACDP] Remote coordination branch not found; falling back to legacy local cleanup.');
-    const legacyResult = cleanupExpiredLocks({ logEvents: true });
-    console.log(`[ACDP] Cleanup removed ${legacyResult.cleaned} expired lock(s); ${legacyResult.remaining} active lock(s) remain.`);
-    return;
+    throw new Error(
+      'Remote coordination branch (origin/acdp/state) not found.\n' +
+      'Cleanup operates remotely so all agents see expired lock removal.\n' +
+      'Set up origin/acdp/state first. See docs/remote-operations.md for instructions.'
+    );
   }
 
   const result = coordinationBranch.publishRemoteMutation({
@@ -1309,27 +1219,28 @@ function watchLogs() {
 
 function printUsage() {
   console.log(`ACDP CLI Tools — v${require('fs').existsSync(require('path').join(__dirname, '..', 'VERSION')) ? require('fs').readFileSync(require('path').join(__dirname, '..', 'VERSION'), 'utf8').trim() : '?'}
+
+All coordination commands operate against origin/acdp/state.
+Set up that branch before using lock, release, or cleanup.
+
 Usage:
   node acdp/cli.js lock <resource> [scope] [reason] [ttlMinutes] [--json]
   node acdp/cli.js renew <resource|lock-id> [ttlMinutes]
   node acdp/cli.js release <resource> [summary] [--json]
-  node acdp/cli.js lock-remote <resource> [scope] [reason] [ttlMinutes] [--json]
-  node acdp/cli.js release-remote <resource> [summary] [--json]
-  node acdp/cli.js cleanup-remote
+  node acdp/cli.js cleanup
   node acdp/cli.js heartbeat [details]
   node acdp/cli.js doctor [--json]
   node acdp/cli.js status [--remote] [--json]
   node acdp/cli.js sync [--json]
   node acdp/cli.js watch
   node acdp/cli.js subscribe
-  node acdp/cli.js cleanup
   node acdp/cli.js batch <task> <resource> [ttlMinutes] [scope]
   node acdp/cli.js finish [--json] [--offline]
   node acdp/cli.js override-release <agent-id> [--json]
   node acdp/export-logs.js [output-directory]
 
 Flags:
-  --json     Output result as JSON (machine-readable; supported on lock, release, lock-remote, release-remote, finish, override-release, doctor, status, sync)
+  --json     Output result as JSON (machine-readable; supported on lock, release, finish, override-release, doctor, status, sync)
   --offline  Read-only mode: skip remote coordination (supported on finish)
   --remote   Show remote coordination state (status command only)
 
@@ -1340,13 +1251,10 @@ Examples:
   node acdp/cli.js lock "src/app.js" file "Fix routing bug" 30
   node acdp/cli.js lock "src/app.js" --json
   node acdp/cli.js renew "src/app.js" 45
-  node acdp/cli.js lock-remote "src/app.js" file "Fix routing bug" 30
-  node acdp/cli.js lock-remote "src/app.js" --json
-  node acdp/cli.js cleanup-remote
+  node acdp/cli.js release "src/app.js" "Routing bug fixed" --json
+  node acdp/cli.js cleanup
   node acdp/cli.js heartbeat "Still processing dashboard refactor"
   node acdp/cli.js doctor --json
-  node acdp/cli.js release "src/app.js" "Routing bug fixed" --json
-  node acdp/cli.js release-remote "src/app.js" "Routing bug fixed" --json
   node acdp/cli.js status --remote --json
   node acdp/cli.js sync
   node acdp/cli.js finish --json
@@ -1434,21 +1342,6 @@ function main() {
       }
       renewResource(args[1], args[2]);
       break;
-    case 'lock-remote':
-      if (!args[1]) {
-        throw new Error('Usage: node acdp/cli.js lock-remote <resource> [scope] [reason] [ttlMinutes]');
-      }
-      {
-        const parsed = parseLockArguments(args);
-        lockRemoteResource(parsed.resource, parsed.scope, parsed.reason, parsed.ttlMinutes, { json: hasFlag(args, '--json') });
-      }
-      break;
-    case 'release-remote':
-      if (!args[1]) {
-        throw new Error('Usage: node acdp/cli.js release-remote <resource> [summary]');
-      }
-      releaseRemoteResource(args[1], args[2] || 'Task completed', { json: hasFlag(args, '--json') });
-      break;
     case 'status':
       printStatus({ remote: hasFlag(args, '--remote'), json: hasFlag(args, '--json') });
       break;
@@ -1461,12 +1354,7 @@ function main() {
     case 'watch':
       watchLogs();
       break;
-    case 'cleanup': {
-      const result = cleanupExpiredLocks({ logEvents: true });
-      console.log(`[ACDP] Cleanup removed ${result.cleaned} expired lock(s); ${result.remaining} active lock(s) remain.`);
-      break;
-    }
-    case 'cleanup-remote':
+    case 'cleanup':
       cleanupRemoteExpiredLocks();
       break;
     case 'heartbeat':

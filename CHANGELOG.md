@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.3.0 — Remote-Only Coordination
+
+### Breaking Changes
+
+- **`lock`, `release`, and `cleanup` are now remote-only.** All three commands always publish to `origin/acdp/state`. If that branch does not exist, the command fails with an explicit error. There is no local-only lock path.
+- **`lock-remote`, `release-remote`, and `cleanup-remote` have been removed.** These commands no longer exist. Use `lock`, `release`, and `cleanup` directly.
+
+### New Features
+
+- **`default_branch` in `governance.json`.** A required field at the top level of `governance.json`. The CLI reads it to record `base_branch` on every lock entry and event, so all agents know the integration target without asking.
+- **`base_branch` on lock entries.** Every lock now includes `base_branch` (from `governance.json → default_branch`) alongside the existing `branch` field (agent working branch).
+
+### Documentation
+
+- `protocol.md` updated to reflect remote-only as the only coordination mode.
+- `acdp/prompts/join-project.md` and `init-project.md` updated to use `lock`/`release`/`cleanup` and document `default_branch` setup.
+- READMEs, remote operations guide, and simulation notes updated to remove references to deprecated commands.
+
+---
+
 ## v0.2.0 — Trustworthy Core
 
 ### Breaking Changes

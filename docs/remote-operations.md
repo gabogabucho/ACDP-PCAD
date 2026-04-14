@@ -11,8 +11,8 @@ For scenario-by-scenario notes, see also [`docs/remote-simulation-notes.md`](rem
 1. Create and push `acdp/state` from a clean snapshot of the repository's canonical `acdp/` directory.
 2. Verify `origin/acdp/state` contains at least `locks.json`, `events.log`, `agents.md`, `state.md`, and `governance.json`.
 3. Run `node acdp/cli.js sync` and `node acdp/cli.js doctor --json` to confirm the branch is visible, the authoritative remote files parse cleanly, and protocol files are healthy.
-4. Switch operators and agents to the remote-aware commands (`renew`, `status --remote`, `cleanup-remote`, `heartbeat`, `release-remote`) when the branch exists.
-5. Keep legacy/local commands available for repositories that still do not expose `origin/acdp/state`.
+4. Confirm `governance.json` has `"default_branch"` set to the project's principal branch (e.g., `"main"`).
+5. All coordination commands (`lock`, `release`, `cleanup`) operate against `origin/acdp/state`. The old `lock-remote`, `release-remote`, and `cleanup-remote` commands have been removed.
 
 ## What recent trials suggest
 
@@ -21,7 +21,7 @@ These notes combine the current remote-hardening design, the implemented CLI beh
 ### Single-agent happy path
 
 - Passed in the expected way.
-- An agent that syncs first, acquires with `lock-remote`, renews before TTL expiry, and releases with `release-remote` sees the cleanest behavior.
+- An agent that syncs first, acquires with `lock`, renews before TTL expiry, and releases with `release` sees the cleanest behavior.
 - The important operator takeaway: remote-first mode is easiest when the agent treats `origin/acdp/state` as the only lock truth, not its local branch mirror.
 
 ### Same-resource race loser behavior
@@ -36,7 +36,7 @@ These notes combine the current remote-hardening design, the implemented CLI beh
 - On reconnect, the first question is whether the remote branch still contains the same `lock_id` and whether that lock is still unexpired there.
 - If not, ownership is gone. Re-declare intent and reacquire rather than trying to "finish the old lock story."
 
-### `cleanup-remote` safety under renewal race
+### `cleanup` safety under renewal race
 
 - Current behavior is intentionally conservative and that is good.
 - If cleanup sees an expired lock on an older snapshot, it must re-fetch and re-check before publishing removal.
@@ -67,7 +67,7 @@ Read this as: **"the coordination snapshot visible from this checkout is older t
 - This is the most important stale signal for reconnect and race handling.
 - It means your local assumptions about locks, recent events, or agent status may no longer be safe for mutation.
 - Before any mutate action, sync again and re-evaluate ownership.
-- During pure local coding, it is a warning; before `lock-remote`, `renew`, `release-remote`, `heartbeat`, cleanup, or state publication, it is effectively a stop sign.
+- During pure local coding, it is a warning; before `lock`, `renew`, `release`, `heartbeat`, `cleanup`, or state publication, it is effectively a stop sign.
 
 ### `local_protocol_differs_from_remote`
 
@@ -127,7 +127,7 @@ The main anti-pattern is blind retry from stale assumptions.
 
 - Never force-push `acdp/state`.
 - Treat a missing or expired remote lock as lost ownership, even if a local checkout still remembers it.
-- `cleanup-remote` is intentionally conservative: it re-fetches, revalidates expiration on the latest base, and only then publishes cleanup events.
+- `cleanup` is intentionally conservative: it re-fetches, revalidates expiration on the latest base, and only then publishes cleanup events.
 - Expected divergence between a feature branch and `acdp/state` is normal; focus on the explicit `stale_coordination_snapshot` and `local_protocol_differs_from_remote` signals instead of assuming every diff is a problem.
 - If `doctor` reports malformed authoritative `locks.json` or `events.log`, treat remote coordination as unhealthy and fix the branch before mutating coordination state.
 
