@@ -13,13 +13,31 @@ Before writing ANY code, you MUST follow this onboarding sequence:
 
 1. **Connect to the coordination server**:
    - Check if the ACDP MCP server is already configured. If using Claude Code, check `.mcp.json` in the project root. If using Claude Desktop, check `claude_desktop_config.json`.
-   - If the MCP server is NOT configured, add it now. For Claude Code, create or edit `.mcp.json` in the project root:
+   - If the MCP server is NOT configured, add it now. For Claude Code, create or edit `.mcp.json` in the project root.
+   - **IMPORTANT: Detect the operating system first.** The config differs between platforms:
+   
+     **Mac / Linux:**
      ```json
      {
        "mcpServers": {
          "acdp": {
            "command": "npx",
-           "args": ["-y", "acdp-mcp-server"],
+           "args": ["-y", "-p", "acdp-mcp-server", "acdp-mcp"],
+           "env": {
+             "ACDP_AGENT_ID": "your-agent-id"
+           }
+         }
+       }
+     }
+     ```
+     
+     **Windows (REQUIRED — npx will fail without cmd /c):**
+     ```json
+     {
+       "mcpServers": {
+         "acdp": {
+           "command": "cmd",
+           "args": ["/c", "npx", "-y", "-p", "acdp-mcp-server", "acdp-mcp"],
            "env": {
              "ACDP_AGENT_ID": "your-agent-id"
            }

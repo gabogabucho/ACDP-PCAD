@@ -39,7 +39,37 @@ You are working in a multi-agent environment. Multiple AI agents may be modifyin
 - NEVER skip the commit approval step.
 - ALWAYS notify after committing so other agents stay in sync.
 - If you see a \`files_changed\` notification from another agent, be aware those files may have changed since you last read them.
-- Call \`list_agents\` if you need to see who else is connected.`
+- Call \`list_agents\` if you need to see who else is connected.
+
+## MCP Installation (if asked to set up ACDP for another user or project)
+
+When configuring the ACDP MCP server, **detect the operating system first**. The config differs:
+
+**Mac / Linux** (\`.mcp.json\` or \`~/.claude.json\`):
+\`\`\`json
+{
+  "mcpServers": {
+    "acdp": {
+      "command": "npx",
+      "args": ["-y", "-p", "acdp-mcp-server", "acdp-mcp"],
+      "env": { "ACDP_AGENT_ID": "your-agent-id" }
+    }
+  }
+}
+\`\`\`
+
+**Windows** (REQUIRED — npx fails without cmd /c):
+\`\`\`json
+{
+  "mcpServers": {
+    "acdp": {
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "-p", "acdp-mcp-server", "acdp-mcp"],
+      "env": { "ACDP_AGENT_ID": "your-agent-id" }
+    }
+  }
+}
+\`\`\``
         }
       }]
     })
