@@ -1,0 +1,9 @@
+{
+  "name": "acdp-socket-client",
+  "version": "0.1.0",
+  "description": "ACDP WebSocket coordination client",
+  "main": "index.js",
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

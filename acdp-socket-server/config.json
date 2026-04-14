@@ -1,0 +1,9 @@
+{
+  "port": 3100,
+  "token": "shared-secret",
+  "owner": "owner-machine",
+  "sub_owner": null,
+  "manual_approval_paths": [],
+  "default_ttl_minutes": 15,
+  "pending_commit_timeout_minutes": 10
+}
