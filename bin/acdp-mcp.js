@@ -10,7 +10,7 @@ const { registerPrompts } = require('../acdp-mcp-server/prompts');
 const AGENT_ID = process.env.ACDP_AGENT_ID || `agent-${require('os').hostname()}-${process.pid}`;
 const MACHINE = process.env.ACDP_MACHINE || require('os').hostname();
 
-// Optional overrides — if not provided, bootstrap auto-detects/starts the server
+// Optional overrides — if both are set, auto-connect on startup
 const SOCKET_URL_OVERRIDE = process.env.ACDP_SOCKET_URL || null;
 const TOKEN_OVERRIDE = process.env.ACDP_TOKEN || null;
 
@@ -57,41 +57,46 @@ async function connectToServer(url, token) {
   console.error(`[ACDP MCP] Connected as ${AGENT_ID} (${MACHINE}) to ${url}`);
 }
 
-async function main() {
-  let url, token;
-
-  if (SOCKET_URL_OVERRIDE && TOKEN_OVERRIDE) {
-    url = SOCKET_URL_OVERRIDE;
-    token = TOKEN_OVERRIDE;
-    console.error(`[ACDP MCP] Using manual config: ${url}`);
+async function startLocalServer() {
+  console.error('[ACDP MCP] Starting local server...');
+  const server = await ensureServer();
+  const url = server.url;
+  const token = server.config.token;
+  if (server.started) {
+    console.error(`[ACDP MCP] Started new server (pid: ${server.pid})`);
   } else {
-    console.error('[ACDP MCP] Auto-bootstrapping socket server...');
-    const server = await ensureServer();
-    url = server.url;
-    token = server.config.token;
-    if (server.started) {
-      console.error(`[ACDP MCP] Started new server (pid: ${server.pid})`);
-    } else {
-      console.error(`[ACDP MCP] Found existing server at ${url}`);
-    }
+    console.error(`[ACDP MCP] Found existing server at ${url}`);
   }
-
   await connectToServer(url, token);
+  return { url, token: server.config.token };
+}
+
+async function main() {
+  // If env vars are set, auto-connect on startup (backwards compatible)
+  if (SOCKET_URL_OVERRIDE && TOKEN_OVERRIDE) {
+    console.error(`[ACDP MCP] Using manual config: ${SOCKET_URL_OVERRIDE}`);
+    await connectToServer(SOCKET_URL_OVERRIDE, TOKEN_OVERRIDE);
+  } else {
+    // Start WITHOUT connecting — agent decides via tools
+    console.error('[ACDP MCP] Starting in disconnected mode. Use start_local or connect_remote to connect.');
+  }
 
   // Create MCP server
   const mcpServer = new McpServer(
-    { name: 'acdp-coordination', version: '0.5.0' },
+    { name: 'acdp-coordination', version: '0.6.0' },
     {
       capabilities: { tools: {}, prompts: {} },
-      instructions: `This server provides file coordination tools for multi-agent development. Always check locks before modifying files, and notify after committing changes.
+      instructions: `This server provides file coordination tools for multi-agent development.
 
-IMPORTANT: You are currently connected to a LOCAL coordination server. If the user wants to coordinate with agents on another machine, use the connect_remote tool to connect to that machine's socket server — you will need to ask the user for the IP address and the secret token.
+IMPORTANT: On startup, you are NOT connected to any coordination server. You MUST connect first using one of these tools:
+- Use "start_local" to start a local coordination server on this machine (you become the owner). Use this when YOU are the one hosting the coordination.
+- Use "connect_remote" to connect to another machine's server. You need the IP address and secret token from the owner. ASK THE USER which one they want.
 
-Use the coordination-protocol prompt for full instructions.`
+Once connected, use check_locks before modifying files, and notify_sync after committing changes. Use the coordination-protocol prompt for full instructions.`
     }
   );
 
-  registerTools(mcpServer, context, connectToServer);
+  registerTools(mcpServer, context, connectToServer, startLocalServer);
   registerPrompts(mcpServer);
 
   const transport = new StdioServerTransport();

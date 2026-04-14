@@ -1,6 +1,34 @@
 const z = require('zod');
 
-function registerTools(server, context, connectToServer) {
+const NOT_CONNECTED_MSG = 'Not connected to any coordination server. Use "start_local" to host a server or "connect_remote" to join another machine\'s server.';
+
+function requireConnection(context) {
+  if (!context.commands || !context.socketClient || !context.socketClient.connected) {
+    return { content: [{ type: 'text', text: NOT_CONNECTED_MSG }], isError: true };
+  }
+  return null;
+}
+
+function registerTools(server, context, connectToServer, startLocalServer) {
+  server.tool(
+    'start_local',
+    'Start a local ACDP coordination server on this machine. You become the owner. Other agents can connect to your server using your IP and the generated token. Use this when YOU are hosting the coordination.',
+    {},
+    async () => {
+      try {
+        const result = await startLocalServer();
+        return {
+          content: [{
+            type: 'text',
+            text: `Local server running at ${result.url}\nToken: ${result.token}\n\nYou are the owner. Share your IP and this token with co-workers so they can connect using connect_remote.\n\nAll coordination tools are now active.`
+          }]
+        };
+      } catch (err) {
+        return { content: [{ type: 'text', text: `Failed to start local server: ${err.message}` }], isError: true };
+      }
+    }
+  );
+
   server.tool(
     'connect_remote',
     'Connect to a remote ACDP coordination server on another machine. Use this when you need to coordinate with agents running on a different computer. You will need the server IP/hostname and the secret token (found in acdp-socket-server/config.json on the remote machine). ASK THE USER for these values if you do not have them.',
@@ -52,6 +80,8 @@ function registerTools(server, context, connectToServer) {
     'List all active file locks. Shows which files are locked, by whom, and when they expire.',
     {},
     async () => {
+      const err = requireConnection(context);
+      if (err) return err;
       try {
         const locks = await context.commands.checkLocks();
         if (locks.length === 0) {
@@ -75,6 +105,8 @@ function registerTools(server, context, connectToServer) {
       reason: z.string().optional().describe('Why you need these files')
     },
     async ({ files, reason }) => {
+      const err = requireConnection(context);
+      if (err) return err;
       try {
         const lock = await context.commands.lockFiles(files, reason);
         return {
@@ -96,6 +128,8 @@ function registerTools(server, context, connectToServer) {
       files: z.array(z.string()).describe('Array of file paths to release')
     },
     async ({ files }) => {
+      const err = requireConnection(context);
+      if (err) return err;
       try {
         await context.commands.releaseFiles(files);
         return { content: [{ type: 'text', text: `Released locks for: ${files.join(', ')}` }] };
@@ -113,6 +147,8 @@ function registerTools(server, context, connectToServer) {
       summary: z.string().optional().describe('Short description of changes')
     },
     async ({ files, summary }) => {
+      const err = requireConnection(context);
+      if (err) return err;
       try {
         const result = await context.commands.requestCommit(files, summary);
         if (result.status === 'approved') {
@@ -144,6 +180,8 @@ function registerTools(server, context, connectToServer) {
       message: z.string().optional().describe('Description of what changed')
     },
     async ({ files, message }) => {
+      const err = requireConnection(context);
+      if (err) return err;
       try {
         await context.commands.notifySync(files, message);
         return {
@@ -163,6 +201,8 @@ function registerTools(server, context, connectToServer) {
     'List all agents registered on the coordination server and their connection status.',
     {},
     async () => {
+      const err = requireConnection(context);
+      if (err) return err;
       try {
         const agents = await context.commands.listAgents();
         if (agents.length === 0) {
