@@ -12,7 +12,6 @@ You are an AI agent joining an existing software project that uses ACDP (Agent C
 Before writing ANY code, you MUST follow this onboarding sequence:
 
 1. **Connect to the coordination server**:
-   - Read `acdp-socket-server/config.json` to find the server port and token.
    - Check if the ACDP MCP server is already configured. If using Claude Code, check `.mcp.json` in the project root. If using Claude Desktop, check `claude_desktop_config.json`.
    - If the MCP server is NOT configured, add it now. For Claude Code, create or edit `.mcp.json` in the project root:
      ```json
@@ -22,16 +21,16 @@ Before writing ANY code, you MUST follow this onboarding sequence:
            "command": "node",
            "args": ["acdp-mcp-server/index.js"],
            "env": {
-             "ACDP_SOCKET_URL": "ws://<server-ip>:3100",
-             "ACDP_AGENT_ID": "your-agent-id",
-             "ACDP_TOKEN": "<token from config.json>"
+             "ACDP_AGENT_ID": "your-agent-id"
            }
          }
        }
      }
      ```
-   - Replace `<server-ip>` with the IP of the machine running the socket server (use `127.0.0.1` if local). Replace `your-agent-id` with a unique identifier (e.g., `claude-agent-1`). Replace `<token>` with the token from `acdp-socket-server/config.json`.
+   - Replace `your-agent-id` with a unique identifier for this agent (e.g., `claude-agent-1`).
+   - That's it. The MCP server auto-detects or starts the socket server on first use. No manual server setup needed — if no server is running, it starts one automatically with this machine as owner.
    - After adding the config, the MCP tools will be available: `check_locks`, `lock_files`, `release_files`, `request_commit`, `notify_sync`, `list_agents`.
+   - **For remote teams**: If the socket server runs on a different machine, add `ACDP_SOCKET_URL` and `ACDP_TOKEN` env vars to connect to that specific server instead of auto-starting a local one.
 
 2. **Read the protocol**:
    - Read `acdp/protocol.md` completely. This is your operating manual.

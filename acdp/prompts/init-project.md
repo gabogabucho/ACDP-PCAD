@@ -14,7 +14,6 @@ Read the protocol at `acdp/protocol.md` to understand the rules.
 Your tasks:
 
 1. **Configure the coordination server connection**:
-   - Read `acdp-socket-server/config.json` to find the server port and token.
    - Check if the ACDP MCP server is already configured. If using Claude Code, check `.mcp.json` in the project root. If using Claude Desktop, check `claude_desktop_config.json`.
    - If the MCP server is NOT configured, add it now. For Claude Code, create or edit `.mcp.json` in the project root:
      ```json
@@ -24,15 +23,14 @@ Your tasks:
            "command": "node",
            "args": ["acdp-mcp-server/index.js"],
            "env": {
-             "ACDP_SOCKET_URL": "ws://<server-ip>:3100",
-             "ACDP_AGENT_ID": "your-agent-id",
-             "ACDP_TOKEN": "<token from config.json>"
+             "ACDP_AGENT_ID": "your-agent-id"
            }
          }
        }
      }
      ```
-   - Replace `<server-ip>` with the IP of the machine running the socket server (use `127.0.0.1` if local). Replace `your-agent-id` with a unique identifier (e.g., `claude-lead-agent`). Replace `<token>` with the token from `acdp-socket-server/config.json`.
+   - Replace `your-agent-id` with a unique identifier (e.g., `claude-lead-agent`).
+   - That's it. The MCP server auto-starts the socket server on first use with this machine as owner. A random secure token is generated automatically in `acdp-socket-server/config.json`.
    - After adding the config, the MCP tools will be available: `check_locks`, `lock_files`, `release_files`, `request_commit`, `notify_sync`, `list_agents`.
 
 2. **Register yourself** as the first agent:
