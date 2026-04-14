@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "acdp": {
+      "command": "node",
+      "args": ["acdp-mcp-server/index.js"],
+      "env": {
+        "ACDP_AGENT_ID": "claude-agent"
+      }
+    }
+  }
+}
