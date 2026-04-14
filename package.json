@@ -1,11 +1,10 @@
 {
   "name": "acdp-mcp-server",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Agent Coordination Protocol for Development — MCP server for multi-agent file coordination via WebSocket",
-  "bin": {
-    "acdp-mcp-server": "./acdp-mcp-server/index.js"
-  },
+  "bin": "./bin.js",
   "files": [
+    "bin.js",
     "acdp-mcp-server/",
     "acdp-socket-server/index.js",
     "acdp-socket-server/state.js",
@@ -35,7 +34,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/gabogabucho/ACDP-PCAD"
+    "url": "git+https://github.com/gabogabucho/ACDP-PCAD.git"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
