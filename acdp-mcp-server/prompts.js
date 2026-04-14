@@ -11,6 +11,12 @@ function registerPrompts(server) {
 
 You are working in a multi-agent environment. Multiple AI agents may be modifying files in this project simultaneously. To prevent conflicts, you MUST follow this coordination protocol.
 
+## First: Connect to a server
+
+You start DISCONNECTED. Before doing anything, you must connect:
+- Call \`start_local\` to start a server on this machine (you become the owner)
+- Call \`connect_remote\` to join another machine's server (you need their IP and token — ask the user)
+
 ## Before modifying any file
 
 1. Call \`check_locks\` to see which files are currently locked by other agents.
@@ -35,50 +41,13 @@ You are working in a multi-agent environment. Multiple AI agents may be modifyin
 
 ## Important rules
 
+- NEVER create or modify MCP config files (.mcp.json, ~/.claude.json, ~/.claude/mcp/). The MCP is pre-installed by the user.
 - NEVER modify a file you haven't locked.
 - NEVER skip the commit approval step.
 - ALWAYS notify after committing so other agents stay in sync.
 - If you see a \`files_changed\` notification from another agent, be aware those files may have changed since you last read them.
 - Call \`list_agents\` if you need to see who else is connected.
-
-## MCP Installation (if asked to set up ACDP for another user or project)
-
-When configuring the ACDP MCP server, **detect the operating system first**. The config differs:
-
-**Mac / Linux** (\`.mcp.json\` or \`~/.claude.json\`):
-\`\`\`json
-{
-  "mcpServers": {
-    "acdp": {
-      "command": "npx",
-      "args": ["-y", "-p", "acdp-mcp-server", "acdp-mcp"],
-      "env": { "ACDP_AGENT_ID": "your-agent-id" }
-    }
-  }
-}
-\`\`\`
-
-**Windows** — for project scope (\`.mcp.json\`), use \`cmd /c\`:
-\`\`\`json
-{
-  "mcpServers": {
-    "acdp": {
-      "command": "cmd",
-      "args": ["/c", "npx", "-y", "-p", "acdp-mcp-server", "acdp-mcp"],
-      "env": { "ACDP_AGENT_ID": "your-agent-id" }
-    }
-  }
-}
-\`\`\`
-
-**Windows** — for global scope, create \`~/.claude/mcp/acdp.json\` (flat format, NO \`mcpServers\` wrapper):
-\`\`\`json
-{
-  "command": "cmd",
-  "args": ["/c", "npx", "-y", "-p", "acdp-mcp-server", "acdp-mcp"],
-  "env": { "ACDP_AGENT_ID": "your-agent-id" }
-}
-\`\`\``
+- To switch servers at any time, call \`connect_remote\` with the new URL and token. No restart needed.`
         }
       }]
     })

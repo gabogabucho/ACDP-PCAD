@@ -13,54 +13,11 @@ Read the protocol at `acdp/protocol.md` to understand the rules.
 
 Your tasks:
 
-1. **Configure the coordination server connection**:
-   - Check if the ACDP MCP server is already configured. If using Claude Code, check `.mcp.json` in the project root. If using Claude Desktop, check `claude_desktop_config.json`.
-   - If the MCP server is NOT configured, add it now. For Claude Code, create or edit `.mcp.json` in the project root.
-   - **IMPORTANT: Detect the operating system first.** The config differs between platforms:
-   
-     **Mac / Linux** (`.mcp.json` in project root or `~/.claude.json` for global):
-     ```json
-     {
-       "mcpServers": {
-         "acdp": {
-           "command": "npx",
-           "args": ["-y", "-p", "acdp-mcp-server", "acdp-mcp"],
-           "env": {
-             "ACDP_AGENT_ID": "your-agent-id"
-           }
-         }
-       }
-     }
-     ```
-     
-     **Windows** — for project scope, use `.mcp.json` with `cmd /c`:
-     ```json
-     {
-       "mcpServers": {
-         "acdp": {
-           "command": "cmd",
-           "args": ["/c", "npx", "-y", "-p", "acdp-mcp-server", "acdp-mcp"],
-           "env": {
-             "ACDP_AGENT_ID": "your-agent-id"
-           }
-         }
-       }
-     }
-     ```
-     
-     **Windows** — for global scope, create `~/.claude/mcp/acdp.json` (flat format, no `mcpServers` wrapper):
-     ```json
-     {
-       "command": "cmd",
-       "args": ["/c", "npx", "-y", "-p", "acdp-mcp-server", "acdp-mcp"],
-       "env": {
-         "ACDP_AGENT_ID": "your-agent-id"
-       }
-     }
-     ```
-   - Replace `your-agent-id` with a unique identifier (e.g., `claude-lead-agent`).
-   - That's it. The MCP server auto-starts the socket server on first use with this machine as owner. A random secure token is generated automatically in `acdp-socket-server/config.json`.
-   - After adding the config, the MCP tools will be available: `check_locks`, `lock_files`, `release_files`, `request_commit`, `notify_sync`, `list_agents`.
+1. **Connect to the coordination server**:
+   - Check if you have ACDP tools available (start_local, connect_remote, check_locks, lock_files, etc.).
+   - If ACDP tools ARE available: call `start_local` to start a coordination server on this machine. You will become the owner.
+   - If ACDP tools are NOT available: tell the user they need to install the ACDP MCP server first. The npm package is `acdp-mcp-server`. Do NOT create or modify any MCP config files — the user must install the MCP themselves to avoid config conflicts.
+   - After connecting, the coordination tools are active: `check_locks`, `lock_files`, `release_files`, `request_commit`, `notify_sync`, `list_agents`.
 
 2. **Register yourself** as the first agent:
    - Add your entry to `acdp/agents.registry.json` with your id, role, and permissions.
@@ -69,12 +26,11 @@ Your tasks:
 3. **Define the project architecture**:
    - Update `acdp/architecture.md` with the actual module structure of this project.
    - Define module ownership (you are the initial owner of all modules).
-   - Define restricted areas (at minimum: `acdp/`, `acdp-socket-server/`, config files, deploy scripts).
+   - Define restricted areas (at minimum: `acdp/`, config files, deploy scripts).
 
 4. **Set governance**:
    - Update `acdp/governance.json` with the project name and yourself as owner and maintainer.
    - Set `"default_branch"` to the project's principal branch (e.g., `"default_branch": "main"`).
-   - Configure `acdp-socket-server/config.json` with the correct `owner` hostname, `sub_owner` if applicable, and any `manual_approval_paths` for files that require human approval before committing.
 
 5. **Declare your first intent and acquire locks**:
    - Choose a task to start with.
@@ -90,12 +46,13 @@ Your tasks:
 
 7. **When done**:
    - Call `request_commit` with the files you changed and a summary. Wait for approval.
-   - After approval, commit and push your changes.
+   - After approval, commit your changes.
    - Call `notify_sync` with the changed files and a description. This notifies all other agents and auto-releases your locks.
    - Update `acdp/state.md` and your status in `acdp/agents.md`.
 
 IMPORTANT RULES:
-- The FIRST thing you do is configure the MCP server connection. Without it you cannot coordinate.
+- Do NOT create or modify .mcp.json, ~/.claude.json, or any MCP config files. The MCP is pre-installed by the user.
+- The FIRST thing you do is call `start_local` to start the coordination server.
 - Always call `check_locks` before modifying any file.
 - Never modify `acdp/governance.json` or `acdp/protocol.md` without owner approval.
 - All coordination happens through the socket server via MCP tools. Do NOT edit `acdp/locks.json` manually.

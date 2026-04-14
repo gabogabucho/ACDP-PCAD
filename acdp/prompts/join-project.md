@@ -12,54 +12,10 @@ You are an AI agent joining an existing software project that uses ACDP (Agent C
 Before writing ANY code, you MUST follow this onboarding sequence:
 
 1. **Connect to the coordination server**:
-   - Check if the ACDP MCP server is already configured. If using Claude Code, check `.mcp.json` in the project root. If using Claude Desktop, check `claude_desktop_config.json`.
-   - If the MCP server is NOT configured, add it now. For Claude Code, create or edit `.mcp.json` in the project root.
-   - **IMPORTANT: Detect the operating system first.** The config differs between platforms:
-   
-     **Mac / Linux** (`.mcp.json` in project root or `~/.claude.json` for global):
-     ```json
-     {
-       "mcpServers": {
-         "acdp": {
-           "command": "npx",
-           "args": ["-y", "-p", "acdp-mcp-server", "acdp-mcp"],
-           "env": {
-             "ACDP_AGENT_ID": "your-agent-id"
-           }
-         }
-       }
-     }
-     ```
-     
-     **Windows** — for project scope, use `.mcp.json` with `cmd /c`:
-     ```json
-     {
-       "mcpServers": {
-         "acdp": {
-           "command": "cmd",
-           "args": ["/c", "npx", "-y", "-p", "acdp-mcp-server", "acdp-mcp"],
-           "env": {
-             "ACDP_AGENT_ID": "your-agent-id"
-           }
-         }
-       }
-     }
-     ```
-     
-     **Windows** — for global scope, create `~/.claude/mcp/acdp.json` (flat format, no `mcpServers` wrapper):
-     ```json
-     {
-       "command": "cmd",
-       "args": ["/c", "npx", "-y", "-p", "acdp-mcp-server", "acdp-mcp"],
-       "env": {
-         "ACDP_AGENT_ID": "your-agent-id"
-       }
-     }
-     ```
-   - Replace `your-agent-id` with a unique identifier for this agent (e.g., `claude-agent-1`).
-   - That's it. The MCP server auto-detects or starts the socket server on first use. No manual server setup needed — if no server is running, it starts one automatically with this machine as owner.
-   - After adding the config, the MCP tools will be available: `check_locks`, `lock_files`, `release_files`, `request_commit`, `notify_sync`, `list_agents`.
-   - **For remote teams**: If the socket server runs on a different machine, add `ACDP_SOCKET_URL` and `ACDP_TOKEN` env vars to connect to that specific server instead of auto-starting a local one.
+   - Check if you have ACDP tools available (start_local, connect_remote, check_locks, lock_files, etc.).
+   - If ACDP tools ARE available: ask the user whether to start a local server (`start_local`) or connect to an existing one (`connect_remote`). If connecting to a remote server, ask the user for the IP address and secret token.
+   - If ACDP tools are NOT available: tell the user they need to install the ACDP MCP server first. The npm package is `acdp-mcp-server`. Do NOT create or modify any MCP config files — the user must install the MCP themselves to avoid config conflicts.
+   - After connecting, the coordination tools are active: `check_locks`, `lock_files`, `release_files`, `request_commit`, `notify_sync`, `list_agents`.
 
 2. **Read the protocol**:
    - Read `acdp/protocol.md` completely. This is your operating manual.
@@ -90,16 +46,16 @@ Before writing ANY code, you MUST follow this onboarding sequence:
 
 7. **When done**:
    - Call `request_commit` with the files you changed and a summary. Wait for approval.
-   - After approval, commit and push your changes.
+   - After approval, commit your changes.
    - Call `notify_sync` with the changed files and a description. This notifies all other agents and auto-releases your locks.
    - Update your status to `idle` in `acdp/agents.md`.
    - Update `acdp/state.md` to reflect the current state.
 
 CRITICAL RULES:
-- NEVER skip MCP configuration. Without it you cannot coordinate with other agents.
+- Do NOT create or modify .mcp.json, ~/.claude.json, ~/.claude/mcp/, or any MCP config files. The MCP is pre-installed by the user.
 - NEVER modify a file without holding its lock via `lock_files`.
 - NEVER skip the `request_commit` step — commit approval is required.
-- ALWAYS call `notify_sync` after committing so other agents know to pull.
+- ALWAYS call `notify_sync` after committing so other agents know to sync.
 - NEVER modify `acdp/protocol.md` or `acdp/governance.json` — these require owner approval.
 - All coordination happens through the socket server via MCP tools. Do NOT edit `acdp/locks.json` manually.
 ```
