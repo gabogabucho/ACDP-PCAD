@@ -4,7 +4,7 @@
 
 **[Leer en español](README.es.md)**
 
-ACDP is an open protocol that lets multiple AI agents (and humans) work on the same codebase simultaneously without conflicts. It provides real-time file locking, commit approval, and agent awareness through a lightweight WebSocket server — no polling, no merge hell.
+ACDP is an open protocol that lets multiple AI agents (and humans) work on the same codebase simultaneously without conflicts. It provides real-time file locking, commit approval, and agent awareness through a lightweight WebSocket server — independent of any version control system or file storage backend.
 
 ---
 
@@ -15,18 +15,18 @@ When multiple AI agents work on the same project ("vibecoding"), things break fa
 - **Conflicts everywhere** — Two agents edit the same file, one overwrites the other
 - **No awareness** — Agent A doesn't know Agent B is modifying a shared dependency
 - **No coordination** — There's no way to say "I'm working on this, don't touch it"
-- **Slow feedback** — Git-based coordination requires commit+push+pull cycles just to check lock status
+- **Slow feedback** — File-based coordination requires save+sync cycles just to check lock status
 - **Lost work** — Without locks, agents silently overwrite each other's changes
 
-Git was designed for incremental human collaboration. It has no concept of real-time coordination between parallel autonomous agents.
+Traditional version control was designed for incremental human collaboration. There is no standard for real-time coordination between parallel autonomous agents — regardless of where the code is stored.
 
 ---
 
 ## How ACDP Solves It
 
-ACDP adds a coordination layer on top of your existing workflow. It doesn't replace Git — it complements it.
+ACDP is a standalone coordination layer. It doesn't depend on Git, GitHub, or any specific file storage — it works with any project, anywhere.
 
-**The core idea:** One machine runs a WebSocket server that holds the coordination state (locks, connected agents, pending approvals) in memory. Every agent connects to this server via an MCP (Model Context Protocol) interface and coordinates in real-time.
+**The core idea:** One machine runs a WebSocket server that holds the coordination state (locks, connected agents, pending approvals) in memory. Every agent connects to this server via an MCP (Model Context Protocol) interface and coordinates in real-time. The protocol only manages *who can modify what and when* — how you store or version your code is entirely up to you.
 
 ```
 Agent wants to edit app.js
@@ -44,18 +44,18 @@ Agent wants to edit app.js
   request_commit(["app.js"])  ──→  Auto-approved (agent holds the lock)
         │
         ▼
-  Agent commits & pushes to Git
+  Agent commits changes (Git, save, deploy — whatever your workflow is)
         │
         ▼
-  notify_sync(["app.js"])  ──→  All agents notified: "pull, app.js changed"
+  notify_sync(["app.js"])  ──→  All agents notified: "sync, app.js changed"
                                   Lock auto-released
 ```
 
-**What makes it different from just using Git branches:**
-- Locks are real-time, not commit-based — you know *instantly* if a file is taken
-- Agents are aware of each other — they can see who's connected and what they're working on
-- Commit approval is built in — configurable auto-approve or manual approval for critical paths
-- Zero polling — WebSocket pushes updates to all agents immediately
+**Key properties:**
+- **Real-time** — Locks and notifications are instant via WebSocket, not dependent on sync cycles
+- **Agent-aware** — Every agent sees who's connected and what they're working on
+- **Approval built-in** — Configurable auto-approve or manual approval for critical paths
+- **Storage-agnostic** — Works with Git, local filesystems, cloud storage, or any other backend
 
 ---
 
@@ -67,11 +67,11 @@ We evaluated three approaches:
 
 | Approach | Pros | Cons |
 |----------|------|------|
-| **Git-based** (files in repo) | No extra infrastructure | Slow (commit+push per lock), polling required, merge conflicts on coordination files |
+| **File-based** (coordination files in repo) | No extra infrastructure | Slow (save+sync per lock), polling required, conflicts on coordination files |
 | **HTTP API** | Simple REST calls | No real-time updates, agents must poll |
 | **WebSocket + MCP** | Real-time, instant notifications, zero config for agents | Requires one machine to host the server |
 
-We chose WebSocket + MCP because coordination must be real-time. When Agent A locks a file, Agent B needs to know *now*, not after the next `git pull`.
+We chose WebSocket + MCP because coordination must be real-time. When Agent A locks a file, Agent B needs to know *now*, not after the next sync. And because the coordination layer is a standalone WebSocket server, it works regardless of how the project stores its files.
 
 MCP (Model Context Protocol) is the standard interface for AI agents to use external tools. By wrapping the WebSocket client in an MCP server, any AI agent that supports MCP (Claude, GPT, Gemini, etc.) gets coordination tools automatically.
 
@@ -107,8 +107,8 @@ MCP (Model Context Protocol) is the standard interface for AI agents to use exte
           └───────────┼───────────┘
                       │
                       ▼
-               Git Repository
-              (source code only)
+              Project Files
+         (Git, local, cloud, etc.)
 ```
 
 **Three components, one npm package:**
@@ -180,7 +180,7 @@ Add `.mcp.json` to your project root:
 }
 ```
 
-Commit it to the repo — every collaborator who clones gets ACDP automatically.
+Commit it to your project — every collaborator gets ACDP automatically.
 
 ### What Happens on First Run
 
@@ -207,7 +207,7 @@ Once installed, your AI agent has these tools:
 | `lock_files` | Lock files before modifying them. Fails if already locked by another agent |
 | `release_files` | Release your locks when done or when you change plans |
 | `request_commit` | Request permission to commit. Auto-approved if you hold the lock |
-| `notify_sync` | After committing: notify all agents to pull, auto-releases your locks |
+| `notify_sync` | After committing: notify all agents to sync, auto-releases your locks |
 | `list_agents` | See who's connected — agent IDs, machines, roles |
 | `connect_remote` | Switch to a remote server (asks for IP + token) |
 | `connection_status` | Check which server you're currently connected to |
@@ -222,7 +222,7 @@ You (with Claude) working on a project:
 3. Claude calls lock_files(["src/api.js"]) → locked
 4. Claude edits src/api.js
 5. Claude calls request_commit → approved (holds the lock)
-6. Claude commits and pushes
+6. Claude commits the changes
 7. Claude calls notify_sync → lock released
 ```
 
@@ -247,7 +247,7 @@ Agent Frontend:
   notify_sync(["src/components/Header.jsx"]) → lock released, backend notified
   
 Agent Backend:
-  (receives notification: Header.jsx changed, pull)
+  (receives notification: Header.jsx changed, sync)
   lock_files(["src/components/Header.jsx"]) → now succeeds
 ```
 
@@ -317,10 +317,10 @@ Agent: connect_remote(url: "ws://192.168.1.10:3100", token: "a1b2c3d4e5f6...")
 Maxi's machine (owner):           Juan's machine:
   Claude locks src/auth.js           Claude locks src/dashboard.js
   Claude works on auth               Claude works on dashboard
-  Claude commits & notifies    →     Juan's Claude: "auth.js changed, pull"
-                                     Juan's Claude pulls, continues working
+  Claude commits & notifies    →     Juan's Claude: "auth.js changed, sync"
+                                     Juan's Claude syncs, continues working
                                      Claude commits & notifies
-  Maxi's Claude: "dashboard.js changed, pull"
+  Maxi's Claude: "dashboard.js changed, sync"
 ```
 
 ### Configuration Options
@@ -434,7 +434,7 @@ Copy the prompt from [`acdp/prompts/join-project.md`](acdp/prompts/join-project.
 
 - **Token-based auth** — Every connection requires a shared token. Without it, the server rejects the connection.
 - **Role-based permissions** — Only the owner and sub-owner can approve/reject commits for manual approval paths.
-- **No external exposure by default** — The server listens on `0.0.0.0:3100` but is intended for local network use. For internet exposure, use a reverse proxy with TLS.
+- **No external exposure by default** — The server listens on `0.0.0.0:3100`, intended for local network use. For internet exposure, use a reverse proxy with TLS.
 - **Locks are agent-scoped** — You can only release your own locks. The owner can override any lock.
 
 ---
@@ -445,7 +445,7 @@ Copy the prompt from [`acdp/prompts/join-project.md`](acdp/prompts/join-project.
 - **Coordination over control** — ACDP coordinates, it doesn't dictate
 - **Real-time over polling** — WebSocket, not commit-and-check
 - **Ephemeral over persistent** — Locks die with the server, no stale state
-- **Protocol-agnostic** — Works with Git, but the coordination layer doesn't depend on it
+- **Storage-agnostic** — The coordination layer is independent of how you store or version your code
 
 ---
 
