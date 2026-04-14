@@ -138,45 +138,73 @@ The only thing persisted is `config.json` (server settings) and an optional appe
 
 ### Option A: Global (recommended — works in every project)
 
-Open Claude Code and ask it:
+Open Claude Code and ask it to add the ACDP MCP server globally.
 
-> "Add the ACDP MCP server globally. The config for `~/.claude.json` is:
-> ```json
-> {
->   "mcpServers": {
->     "acdp": {
->       "command": "npx",
->       "args": ["-y", "-p", "acdp-mcp-server", "acdp-mcp"],
->       "env": {
->         "ACDP_AGENT_ID": "claude-agent"
->       }
->     }
->   }
-> }
-> ```
-> On Windows, use `"command": "cmd"` and `"args": ["/c", "npx", "-y", "-p", "acdp-mcp-server", "acdp-mcp"]` instead."
+**Mac / Linux** — add to `~/.claude.json`:
 
-The agent will add the MCP server config to your global `~/.claude.json`. After restarting Claude Code, ACDP tools will be available in every project.
+```json
+{
+  "mcpServers": {
+    "acdp": {
+      "command": "npx",
+      "args": ["-y", "-p", "acdp-mcp-server", "acdp-mcp"],
+      "env": {
+        "ACDP_AGENT_ID": "claude-agent"
+      }
+    }
+  }
+}
+```
+
+**Windows** — create the file `~/.claude/mcp/acdp.json` (flat format, no `mcpServers` wrapper):
+
+```json
+{
+  "command": "cmd",
+  "args": ["/c", "npx", "-y", "-p", "acdp-mcp-server", "acdp-mcp"],
+  "env": {
+    "ACDP_AGENT_ID": "claude-agent"
+  }
+}
+```
+
+> **Note:** On Windows, Claude Code stores MCP servers as individual files in `~/.claude/mcp/`. The filename (`acdp.json`) becomes the server name. No `mcpServers` wrapper is needed.
+
+After restarting Claude Code, ACDP tools will be available in every project.
 
 ### Option B: Per-project
 
 Ask your AI agent to create `.mcp.json` in the project root:
 
-> "Create a `.mcp.json` file in the project root with the ACDP MCP server config:
-> ```json
-> {
->   "mcpServers": {
->     "acdp": {
->       "command": "npx",
->       "args": ["-y", "-p", "acdp-mcp-server", "acdp-mcp"],
->       "env": {
->         "ACDP_AGENT_ID": "claude-agent"
->       }
->     }
->   }
-> }
-> ```
-> On Windows, use `"command": "cmd"` and `"args": ["/c", "npx", "-y", "-p", "acdp-mcp-server", "acdp-mcp"]` instead."
+**Mac / Linux:**
+```json
+{
+  "mcpServers": {
+    "acdp": {
+      "command": "npx",
+      "args": ["-y", "-p", "acdp-mcp-server", "acdp-mcp"],
+      "env": {
+        "ACDP_AGENT_ID": "claude-agent"
+      }
+    }
+  }
+}
+```
+
+**Windows:**
+```json
+{
+  "mcpServers": {
+    "acdp": {
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "-p", "acdp-mcp-server", "acdp-mcp"],
+      "env": {
+        "ACDP_AGENT_ID": "claude-agent"
+      }
+    }
+  }
+}
+```
 
 Commit it to your project — every collaborator gets ACDP automatically. Restart Claude Code to load the MCP.
 

@@ -58,7 +58,7 @@ When configuring the ACDP MCP server, **detect the operating system first**. The
 }
 \`\`\`
 
-**Windows** (REQUIRED — npx fails without cmd /c):
+**Windows** — for project scope (\`.mcp.json\`), use \`cmd /c\`:
 \`\`\`json
 {
   "mcpServers": {
@@ -68,6 +68,15 @@ When configuring the ACDP MCP server, **detect the operating system first**. The
       "env": { "ACDP_AGENT_ID": "your-agent-id" }
     }
   }
+}
+\`\`\`
+
+**Windows** — for global scope, create \`~/.claude/mcp/acdp.json\` (flat format, NO \`mcpServers\` wrapper):
+\`\`\`json
+{
+  "command": "cmd",
+  "args": ["/c", "npx", "-y", "-p", "acdp-mcp-server", "acdp-mcp"],
+  "env": { "ACDP_AGENT_ID": "your-agent-id" }
 }
 \`\`\``
         }

@@ -16,7 +16,7 @@ Before writing ANY code, you MUST follow this onboarding sequence:
    - If the MCP server is NOT configured, add it now. For Claude Code, create or edit `.mcp.json` in the project root.
    - **IMPORTANT: Detect the operating system first.** The config differs between platforms:
    
-     **Mac / Linux:**
+     **Mac / Linux** (`.mcp.json` in project root or `~/.claude.json` for global):
      ```json
      {
        "mcpServers": {
@@ -31,7 +31,7 @@ Before writing ANY code, you MUST follow this onboarding sequence:
      }
      ```
      
-     **Windows (REQUIRED — npx will fail without cmd /c):**
+     **Windows** — for project scope, use `.mcp.json` with `cmd /c`:
      ```json
      {
        "mcpServers": {
@@ -42,6 +42,17 @@ Before writing ANY code, you MUST follow this onboarding sequence:
              "ACDP_AGENT_ID": "your-agent-id"
            }
          }
+       }
+     }
+     ```
+     
+     **Windows** — for global scope, create `~/.claude/mcp/acdp.json` (flat format, no `mcpServers` wrapper):
+     ```json
+     {
+       "command": "cmd",
+       "args": ["/c", "npx", "-y", "-p", "acdp-mcp-server", "acdp-mcp"],
+       "env": {
+         "ACDP_AGENT_ID": "your-agent-id"
        }
      }
      ```
