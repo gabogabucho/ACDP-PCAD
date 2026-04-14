@@ -16,7 +16,10 @@ Your tasks:
 1. **Connect to the coordination server**:
    - Check if you have ACDP tools available (start_local, connect_remote, check_locks, lock_files, etc.).
    - If ACDP tools ARE available: call `start_local` to start a coordination server on this machine. You will become the owner.
-   - If ACDP tools are NOT available: tell the user they need to install the ACDP MCP server first. The npm package is `acdp-mcp-server`. Do NOT create or modify any MCP config files — the user must install the MCP themselves to avoid config conflicts.
+   - If ACDP tools are NOT available: tell the user they need to install the ACDP MCP server first. The npm package is `acdp-mcp-server`. They must **manually edit** their Claude Code config file to add it — do NOT use `claude mcp add` CLI commands (they have known bugs with flag parsing). The config file locations are:
+     - **Mac/Linux:** `~/.claude.json` — add inside `"mcpServers"` with command `npx`, args `["-y", "-p", "acdp-mcp-server", "acdp-mcp"]`
+     - **Windows:** `~/.claude/.claude.json` or `~/.claude/mcp/acdp.json` — use `node` with absolute path to `bin/acdp-mcp.js` (run `npm install -g acdp-mcp-server` first, then `npm root -g` to find the path)
+     - Do NOT create or modify any MCP config files yourself — the user must install the MCP themselves to avoid config conflicts.
    - After connecting, the coordination tools are active: `check_locks`, `lock_files`, `release_files`, `request_commit`, `notify_sync`, `list_agents`.
 
 2. **Register yourself** as the first agent:

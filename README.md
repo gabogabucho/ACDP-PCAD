@@ -138,9 +138,9 @@ The only thing persisted is `config.json` (server settings) and an optional appe
 
 ### Option A: Global (recommended — works in every project)
 
-Open Claude Code and ask it to add the ACDP MCP server globally.
+> **Important:** Do NOT use `claude mcp add` CLI commands — there are [known bugs](https://github.com/anthropics/claude-code/issues/3825) with flag parsing that cause `unknown option` errors. Edit the config file directly instead.
 
-**Mac / Linux** — add to `~/.claude.json`:
+**Mac / Linux** — edit `~/.claude.json` and add the `acdp` entry inside `mcpServers`:
 
 ```json
 {
@@ -156,13 +156,15 @@ Open Claude Code and ask it to add the ACDP MCP server globally.
 }
 ```
 
-**Windows** — first install the package globally, then configure:
+> If the file already has other keys, just add the `"acdp": { ... }` block inside the existing `"mcpServers"` object.
+
+**Windows** — first install the package globally:
 
 ```bash
 npm install -g acdp-mcp-server
 ```
 
-Then add the MCP config. The location depends on your Claude Code version — check which one exists on your machine:
+Then edit the config file. The location depends on your Claude Code version — check which one exists on your machine:
 
 **Option 1:** `~/.claude/.claude.json` (wrapped format, same as Mac):
 
@@ -196,11 +198,11 @@ Replace `YOUR_USER` with your Windows username. To find the exact path, run: `wh
 
 > **Note:** On Windows, use `node` directly instead of `npx` or `cmd /c` — they don't propagate stdio correctly to the MCP process. If you're unsure which config location to use, check if `~/.claude/.claude.json` already exists — if it does, add your MCP there. Otherwise, create `~/.claude/mcp/acdp.json`.
 
-After restarting Claude Code, ACDP tools will be available in every project.
+**After editing, restart Claude Code.** ACDP tools will be available in every project.
 
 ### Option B: Per-project
 
-Ask your AI agent to create `.mcp.json` in the project root:
+Create `.mcp.json` in the project root:
 
 **Mac / Linux:**
 ```json
@@ -338,7 +340,7 @@ Check the generated `acdp-socket-server/config.json`:
 
 ### Step 2: Co-Workers Connect
 
-Each co-worker adds the ACDP MCP to their Claude Code, pointing to the owner's machine:
+Each co-worker edits their Claude Code config file (do NOT use `claude mcp add` — it has [known bugs](https://github.com/anthropics/claude-code/issues/3825)), pointing to the owner's machine:
 
 **Mac / Linux** — add to `~/.claude.json`:
 

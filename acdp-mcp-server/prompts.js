@@ -41,7 +41,11 @@ You start DISCONNECTED. Before doing anything, you must connect:
 
 ## Important rules
 
-- NEVER create or modify MCP config files (.mcp.json, ~/.claude.json, ~/.claude/mcp/). The MCP is pre-installed by the user.
+- NEVER create or modify MCP config files (.mcp.json, ~/.claude.json, ~/.claude/.claude.json, ~/.claude/mcp/). The MCP is pre-installed by the user.
+- NEVER run \`claude mcp add\` commands — they have known bugs with flag parsing. If the user needs to install the MCP, tell them to manually edit their config file:
+  - Mac/Linux: \`~/.claude.json\` → add inside \`"mcpServers"\` with command \`npx\`, args \`["-y", "-p", "acdp-mcp-server", "acdp-mcp"]\`
+  - Windows: \`~/.claude/.claude.json\` or \`~/.claude/mcp/acdp.json\` → use \`node\` with absolute path (run \`npm install -g acdp-mcp-server\` first, then \`npm root -g\` to find the path)
+  - Then restart Claude Code.
 - NEVER modify a file you haven't locked.
 - NEVER skip the commit approval step.
 - ALWAYS notify after committing so other agents stay in sync.
