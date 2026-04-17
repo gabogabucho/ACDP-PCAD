@@ -1,0 +1,1310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ACDP · Live Coordination</title>
+  <style>
+    /* ============================================================
+       ACDP Dashboard — Cyberpunk theme
+       Single-file, no external dependencies. Vanilla CSS + JS.
+       ============================================================ */
+
+    :root {
+      --bg-0: #050812;
+      --bg-1: #0a1020;
+      --bg-2: #101830;
+      --grid: rgba(56, 189, 248, 0.06);
+      --fg: #d6e4ff;
+      --fg-dim: #7b8aaa;
+      --cyan: #22d3ee;
+      --cyan-glow: rgba(34, 211, 238, 0.55);
+      --magenta: #d946ef;
+      --magenta-glow: rgba(217, 70, 239, 0.5);
+      --green: #34d399;
+      --amber: #fbbf24;
+      --red: #f87171;
+      --border: rgba(56, 189, 248, 0.15);
+      --border-bright: rgba(34, 211, 238, 0.35);
+      --mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, Menlo, monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      background: var(--bg-0);
+      color: var(--fg);
+      font-family: var(--mono);
+      font-size: 13px;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Animated grid background */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+      background-size: 40px 40px;
+      animation: gridScroll 30s linear infinite;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Scanline overlay */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        rgba(34, 211, 238, 0.02) 0px,
+        rgba(34, 211, 238, 0.02) 1px,
+        transparent 1px,
+        transparent 3px
+      );
+      pointer-events: none;
+      z-index: 1;
+      mix-blend-mode: screen;
+    }
+
+    @keyframes gridScroll {
+      0% { background-position: 0 0, 0 0; }
+      100% { background-position: 40px 40px, 40px 40px; }
+    }
+
+    /* Radial vignette */
+    .vignette {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(ellipse at center, transparent 40%, rgba(5, 8, 18, 0.85) 100%);
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    /* ============ Layout ============ */
+
+    .app {
+      position: relative;
+      z-index: 3;
+      height: 100vh;
+      display: grid;
+      grid-template-rows: 64px 1fr;
+      gap: 12px;
+      padding: 12px;
+    }
+
+    /* ============ HUD (top bar) ============ */
+
+    .hud {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 24px;
+      padding: 0 18px;
+      background: linear-gradient(135deg, rgba(10, 16, 32, 0.8), rgba(16, 24, 48, 0.8));
+      border: 1px solid var(--border-bright);
+      border-radius: 6px;
+      backdrop-filter: blur(8px);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hud::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+      animation: scanHud 4s linear infinite;
+    }
+
+    @keyframes scanHud {
+      0% { left: -100%; }
+      100% { left: 100%; }
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      letter-spacing: 0.3em;
+      font-size: 14px;
+      color: var(--cyan);
+      text-shadow: 0 0 12px var(--cyan-glow);
+    }
+
+    .logo-symbol {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 2px solid var(--cyan);
+      transform: rotate(45deg);
+      box-shadow: 0 0 12px var(--cyan-glow), inset 0 0 8px var(--cyan-glow);
+      position: relative;
+    }
+
+    .logo-symbol::after {
+      content: '';
+      position: absolute;
+      inset: 3px;
+      background: var(--cyan);
+      box-shadow: 0 0 8px var(--cyan);
+    }
+
+    .hud-meta {
+      display: flex;
+      gap: 28px;
+      font-size: 11px;
+      color: var(--fg-dim);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .hud-meta strong {
+      color: var(--fg);
+      font-weight: 500;
+      margin-left: 6px;
+    }
+
+    .hud-meta .value-cyan { color: var(--cyan); }
+    .hud-meta .value-magenta { color: var(--magenta); }
+
+    .hud-status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 14px;
+      border: 1px solid var(--border-bright);
+      border-radius: 4px;
+      font-size: 11px;
+      letter-spacing: 0.2em;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 10px var(--green);
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    .status-dot.offline {
+      background: var(--red);
+      box-shadow: 0 0 10px var(--red);
+    }
+
+    .status-dot.reconnecting {
+      background: var(--amber);
+      box-shadow: 0 0 10px var(--amber);
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    /* ============ Grid ============ */
+
+    .grid-main {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: 12px;
+      min-height: 0;
+    }
+
+    .panel {
+      background: linear-gradient(145deg, rgba(10, 16, 32, 0.75), rgba(16, 24, 48, 0.65));
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      backdrop-filter: blur(6px);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .panel::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 40px;
+      height: 2px;
+      background: var(--cyan);
+      box-shadow: 0 0 8px var(--cyan-glow);
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--fg-dim);
+      flex-shrink: 0;
+    }
+
+    .panel-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--cyan);
+      text-shadow: 0 0 6px var(--cyan-glow);
+      font-weight: 500;
+    }
+
+    .panel-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 22px;
+      height: 18px;
+      padding: 0 6px;
+      background: rgba(34, 211, 238, 0.12);
+      border: 1px solid var(--border-bright);
+      border-radius: 3px;
+      font-size: 10px;
+      color: var(--cyan);
+      font-weight: 700;
+    }
+
+    .panel-body {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .panel-network { grid-column: 1; grid-row: 1 / span 2; }
+    .panel-stream { grid-column: 2; grid-row: 1; }
+    .panel-locks { grid-column: 2; grid-row: 2; }
+
+    /* ============ Network Graph ============ */
+
+    #networkCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .network-empty {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--fg-dim);
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      pointer-events: none;
+    }
+
+    .network-empty::before {
+      content: '⬢';
+      display: block;
+      font-size: 32px;
+      margin-bottom: 12px;
+      color: var(--cyan);
+      opacity: 0.3;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    .network-empty-wrap {
+      text-align: center;
+    }
+
+    .network-legend {
+      position: absolute;
+      bottom: 14px;
+      left: 14px;
+      display: flex;
+      gap: 16px;
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      color: var(--fg-dim);
+      text-transform: uppercase;
+      pointer-events: none;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .legend-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .legend-dot.owner { background: var(--magenta); box-shadow: 0 0 6px var(--magenta-glow); }
+    .legend-dot.agent { background: var(--cyan); box-shadow: 0 0 6px var(--cyan-glow); }
+    .legend-dot.locked { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+
+    /* ============ Event Stream ============ */
+
+    .stream {
+      padding: 10px 16px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      font-size: 11.5px;
+      line-height: 1.65;
+      height: 100%;
+    }
+
+    .stream::-webkit-scrollbar { width: 6px; }
+    .stream::-webkit-scrollbar-track { background: transparent; }
+    .stream::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 3px; }
+
+    .stream-row {
+      display: grid;
+      grid-template-columns: 68px auto 1fr;
+      gap: 10px;
+      padding: 3px 0;
+      border-bottom: 1px solid rgba(56, 189, 248, 0.04);
+      animation: fadeIn 0.4s ease-out;
+      white-space: nowrap;
+    }
+
+    .stream-row:hover {
+      background: rgba(34, 211, 238, 0.04);
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateX(-10px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    .stream-time { color: var(--fg-dim); }
+
+    .stream-type {
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 2px;
+      text-align: center;
+      align-self: center;
+    }
+
+    .stream-type.lock    { background: rgba(251, 191, 36, 0.12); color: var(--amber); }
+    .stream-type.unlock  { background: rgba(52, 211, 153, 0.12); color: var(--green); }
+    .stream-type.commit  { background: rgba(217, 70, 239, 0.14); color: var(--magenta); }
+    .stream-type.connect { background: rgba(34, 211, 238, 0.12); color: var(--cyan); }
+    .stream-type.error   { background: rgba(248, 113, 113, 0.14); color: var(--red); }
+    .stream-type.sync    { background: rgba(214, 228, 255, 0.08); color: var(--fg-dim); }
+
+    .stream-msg {
+      color: var(--fg);
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .stream-msg .agent { color: var(--cyan); }
+    .stream-msg .file { color: var(--amber); }
+    .stream-msg .meta { color: var(--fg-dim); margin-left: 8px; font-size: 10px; }
+
+    /* ============ Locks Panel ============ */
+
+    .locks-list {
+      padding: 10px 16px;
+      overflow-y: auto;
+      height: 100%;
+    }
+
+    .locks-list::-webkit-scrollbar { width: 6px; }
+    .locks-list::-webkit-scrollbar-track { background: transparent; }
+    .locks-list::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 3px; }
+
+    .lock-card {
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      background: rgba(10, 16, 32, 0.6);
+      border-left: 3px solid var(--amber);
+      border-radius: 3px;
+      position: relative;
+      animation: slideIn 0.4s ease-out;
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(8px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    .lock-files {
+      font-size: 11.5px;
+      color: var(--fg);
+      margin-bottom: 6px;
+      word-break: break-all;
+    }
+
+    .lock-files .file-item {
+      display: inline-block;
+      padding: 1px 6px;
+      margin-right: 4px;
+      background: rgba(251, 191, 36, 0.1);
+      color: var(--amber);
+      border-radius: 2px;
+      font-size: 10.5px;
+    }
+
+    .lock-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 10px;
+      color: var(--fg-dim);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .lock-holder { color: var(--cyan); }
+
+    .lock-ttl-bar {
+      margin-top: 6px;
+      height: 2px;
+      background: rgba(251, 191, 36, 0.15);
+      border-radius: 1px;
+      overflow: hidden;
+    }
+
+    .lock-ttl-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--amber), #fb923c);
+      box-shadow: 0 0 6px var(--amber);
+      transition: width 1s linear;
+    }
+
+    .empty {
+      text-align: center;
+      color: var(--fg-dim);
+      padding: 30px 10px;
+      font-size: 11px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+
+    /* ============ Pending Commits (overlay section) ============ */
+
+    .commits-section {
+      padding: 8px 16px;
+      border-top: 1px solid var(--border);
+      font-size: 11px;
+      background: rgba(217, 70, 239, 0.03);
+    }
+
+    .commit-card {
+      padding: 8px 10px;
+      background: rgba(217, 70, 239, 0.06);
+      border-left: 3px solid var(--magenta);
+      border-radius: 3px;
+      margin-top: 6px;
+    }
+
+    .commit-summary {
+      color: var(--fg);
+      font-size: 11px;
+      margin-bottom: 4px;
+    }
+
+    .commit-meta {
+      font-size: 10px;
+      color: var(--fg-dim);
+      letter-spacing: 0.08em;
+    }
+
+    .commit-meta .agent { color: var(--magenta); }
+
+    /* ============ Toast notifications ============ */
+
+    .toasts {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 100;
+      pointer-events: none;
+    }
+
+    .toast {
+      padding: 10px 14px;
+      background: rgba(10, 16, 32, 0.95);
+      border: 1px solid var(--cyan);
+      border-radius: 4px;
+      color: var(--fg);
+      font-size: 11px;
+      box-shadow: 0 0 20px var(--cyan-glow), 0 4px 16px rgba(0, 0, 0, 0.5);
+      animation: toastIn 0.3s ease-out, toastOut 0.3s ease-in 2.7s forwards;
+      max-width: 320px;
+    }
+
+    .toast.error { border-color: var(--red); box-shadow: 0 0 20px rgba(248, 113, 113, 0.5), 0 4px 16px rgba(0, 0, 0, 0.5); }
+    .toast.success { border-color: var(--green); box-shadow: 0 0 20px rgba(52, 211, 153, 0.5), 0 4px 16px rgba(0, 0, 0, 0.5); }
+
+    @keyframes toastIn {
+      from { transform: translateX(400px); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    @keyframes toastOut {
+      to { transform: translateX(400px); opacity: 0; }
+    }
+
+    /* ============ Auth modal ============ */
+
+    .auth-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(5, 8, 18, 0.95);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      backdrop-filter: blur(8px);
+    }
+
+    .auth-modal.hidden { display: none; }
+
+    .auth-box {
+      padding: 32px;
+      background: linear-gradient(145deg, rgba(10, 16, 32, 0.95), rgba(16, 24, 48, 0.95));
+      border: 1px solid var(--cyan);
+      border-radius: 6px;
+      min-width: 400px;
+      box-shadow: 0 0 40px var(--cyan-glow);
+    }
+
+    .auth-title {
+      font-size: 16px;
+      letter-spacing: 0.3em;
+      color: var(--cyan);
+      text-shadow: 0 0 8px var(--cyan-glow);
+      margin-bottom: 8px;
+    }
+
+    .auth-subtitle {
+      font-size: 11px;
+      color: var(--fg-dim);
+      margin-bottom: 20px;
+      letter-spacing: 0.1em;
+      line-height: 1.6;
+    }
+
+    .auth-input {
+      width: 100%;
+      padding: 10px 12px;
+      background: rgba(5, 8, 18, 0.8);
+      border: 1px solid var(--border-bright);
+      border-radius: 3px;
+      color: var(--fg);
+      font-family: var(--mono);
+      font-size: 12px;
+      outline: none;
+      transition: all 0.2s;
+    }
+
+    .auth-input:focus {
+      border-color: var(--cyan);
+      box-shadow: 0 0 0 2px var(--cyan-glow);
+    }
+
+    .auth-btn {
+      margin-top: 14px;
+      width: 100%;
+      padding: 10px;
+      background: var(--cyan);
+      color: var(--bg-0);
+      border: none;
+      border-radius: 3px;
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .auth-btn:hover {
+      background: #06b6d4;
+      box-shadow: 0 0 16px var(--cyan-glow);
+    }
+
+    .auth-error {
+      margin-top: 10px;
+      padding: 8px 10px;
+      background: rgba(248, 113, 113, 0.1);
+      border-left: 2px solid var(--red);
+      color: var(--red);
+      font-size: 11px;
+      display: none;
+    }
+
+    .auth-error.visible { display: block; }
+
+    /* ============ Responsive ============ */
+
+    @media (max-width: 1100px) {
+      .grid-main {
+        grid-template-columns: 1fr;
+        grid-template-rows: 320px 1fr 280px;
+      }
+      .panel-network { grid-column: 1; grid-row: 1; }
+      .panel-stream { grid-column: 1; grid-row: 2; }
+      .panel-locks { grid-column: 1; grid-row: 3; }
+    }
+  </style>
+</head>
+<body>
+  <div class="vignette"></div>
+
+  <!-- Auth modal -->
+  <div class="auth-modal" id="authModal">
+    <div class="auth-box">
+      <div class="auth-title">⟨ ACDP ⟩ OBSERVER</div>
+      <div class="auth-subtitle">
+        Enter the server token to begin live coordination stream.
+        Find it in <strong>acdp-socket-server/config.json</strong>.
+      </div>
+      <input type="password" class="auth-input" id="tokenInput" placeholder="server token" autocomplete="off" autofocus>
+      <button class="auth-btn" id="authBtn">CONNECT</button>
+      <div class="auth-error" id="authError"></div>
+    </div>
+  </div>
+
+  <div class="app" id="app" style="display:none">
+    <!-- HUD -->
+    <header class="hud">
+      <div class="logo">
+        <span class="logo-symbol"></span>
+        <span>ACDP</span>
+      </div>
+
+      <div class="hud-meta">
+        <div>PROJECT <strong class="value-cyan" id="projectName">—</strong></div>
+        <div>OWNER <strong id="ownerName">—</strong></div>
+        <div>UPTIME <strong id="uptime">00:00:00</strong></div>
+        <div>AGENTS <strong class="value-cyan" id="agentCount">0</strong></div>
+        <div>LOCKS <strong class="value-magenta" id="lockCount">0</strong></div>
+        <div>PENDING <strong id="pendingCount">0</strong></div>
+      </div>
+
+      <div class="hud-status">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">LIVE</span>
+      </div>
+    </header>
+
+    <!-- Main grid -->
+    <main class="grid-main">
+      <!-- Agent network graph -->
+      <section class="panel panel-network">
+        <div class="panel-header">
+          <div class="panel-title">
+            ⬢ AGENT NETWORK
+          </div>
+          <div class="panel-badge" id="networkMetric">—</div>
+        </div>
+        <div class="panel-body">
+          <canvas id="networkCanvas"></canvas>
+          <div class="network-empty" id="networkEmpty">
+            <div class="network-empty-wrap">
+              <div>NO AGENTS CONNECTED</div>
+              <div style="margin-top:6px;font-size:10px;opacity:0.6">Awaiting registrations...</div>
+            </div>
+          </div>
+          <div class="network-legend">
+            <div class="legend-item"><span class="legend-dot owner"></span> OWNER</div>
+            <div class="legend-item"><span class="legend-dot agent"></span> AGENT</div>
+            <div class="legend-item"><span class="legend-dot locked"></span> HAS LOCK</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Event stream -->
+      <section class="panel panel-stream">
+        <div class="panel-header">
+          <div class="panel-title">◈ ACTIVITY STREAM</div>
+          <div class="panel-badge" id="streamCount">0</div>
+        </div>
+        <div class="panel-body">
+          <div class="stream" id="stream"></div>
+        </div>
+      </section>
+
+      <!-- Locks + Pending commits -->
+      <section class="panel panel-locks">
+        <div class="panel-header">
+          <div class="panel-title">◊ ACTIVE LOCKS</div>
+          <div class="panel-badge" id="locksBadge">0</div>
+        </div>
+        <div class="panel-body" style="display:flex;flex-direction:column">
+          <div class="locks-list" id="locksList"></div>
+          <div class="commits-section" id="commitsSection" style="display:none">
+            <div style="font-size:10px;letter-spacing:0.2em;color:var(--magenta);text-transform:uppercase">
+              ⧗ Pending Commits (<span id="commitsBadge">0</span>)
+            </div>
+            <div id="commitsList"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toasts" id="toasts"></div>
+
+  <script>
+    // ============================================================
+    // ACDP Dashboard — client logic
+    // ============================================================
+
+    const WS_PATH = '/dashboard-ws';
+    const RECONNECT_DELAY_MS = 2500;
+
+    const el = (id) => document.getElementById(id);
+
+    // --- Auth flow ---
+    const authModal = el('authModal');
+    const app = el('app');
+    const tokenInput = el('tokenInput');
+    const authBtn = el('authBtn');
+    const authError = el('authError');
+
+    function saveToken(token) {
+      try { sessionStorage.setItem('acdp_token', token); } catch {}
+    }
+
+    function loadToken() {
+      try { return sessionStorage.getItem('acdp_token'); } catch { return null; }
+    }
+
+    function showAuthError(msg) {
+      authError.textContent = msg;
+      authError.classList.add('visible');
+    }
+
+    function hideAuthModal() {
+      authModal.classList.add('hidden');
+      app.style.display = 'grid';
+    }
+
+    function showAuthModal() {
+      authModal.classList.remove('hidden');
+      app.style.display = 'none';
+      tokenInput.focus();
+    }
+
+    authBtn.addEventListener('click', () => {
+      const token = tokenInput.value.trim();
+      if (!token) { showAuthError('Token is required'); return; }
+      saveToken(token);
+      authError.classList.remove('visible');
+      hideAuthModal();
+      connect(token);
+    });
+
+    tokenInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') authBtn.click();
+    });
+
+    // --- State ---
+    const state = {
+      snapshot: null,
+      events: [],
+      agentPositions: new Map(), // agent_id → {x, y, vx, vy}
+      ws: null,
+      reconnectAttempts: 0,
+      lastEventId: 0
+    };
+
+    // --- Connection ---
+    function setStatus(text, cls) {
+      el('statusText').textContent = text;
+      el('statusDot').className = 'status-dot' + (cls ? ' ' + cls : '');
+    }
+
+    function connect(token) {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const url = `${proto}//${location.host}${WS_PATH}?token=${encodeURIComponent(token)}`;
+
+      setStatus('CONNECTING', 'reconnecting');
+      const ws = new WebSocket(url);
+      state.ws = ws;
+
+      ws.addEventListener('open', () => {
+        setStatus('LIVE');
+        state.reconnectAttempts = 0;
+        toast('Connected to ACDP server', 'success');
+      });
+
+      ws.addEventListener('message', (ev) => {
+        let msg;
+        try { msg = JSON.parse(ev.data); } catch { return; }
+
+        if (msg.type === 'init') {
+          applySnapshot(msg.snapshot);
+          (msg.events || []).forEach(e => pushEvent(e, false));
+          renderAll();
+        } else if (msg.type === 'update') {
+          applySnapshot(msg.snapshot);
+          if (msg.event) pushEvent(msg.event, true);
+          renderAll();
+        }
+      });
+
+      ws.addEventListener('close', (ev) => {
+        state.ws = null;
+        if (ev.code === 1006 || ev.code === 1001 || ev.code === 1011) {
+          setStatus('RECONNECTING', 'reconnecting');
+          scheduleReconnect(token);
+        } else if (ev.code >= 4000 && ev.code < 5000) {
+          // Auth error — show modal
+          setStatus('OFFLINE', 'offline');
+          showAuthModal();
+          showAuthError('Authentication failed. Check your token.');
+        } else {
+          setStatus('OFFLINE', 'offline');
+          scheduleReconnect(token);
+        }
+      });
+
+      ws.addEventListener('error', () => {
+        setStatus('ERROR', 'offline');
+      });
+    }
+
+    function scheduleReconnect(token) {
+      state.reconnectAttempts++;
+      const delay = Math.min(RECONNECT_DELAY_MS * state.reconnectAttempts, 15000);
+      setTimeout(() => {
+        if (!state.ws) connect(token);
+      }, delay);
+    }
+
+    function applySnapshot(snap) {
+      state.snapshot = snap;
+    }
+
+    function pushEvent(event, animate) {
+      state.events.push({ ...event, _id: ++state.lastEventId });
+      if (state.events.length > 200) state.events.shift();
+    }
+
+    // --- Rendering ---
+    function renderAll() {
+      renderHud();
+      renderStream();
+      renderLocks();
+      renderCommits();
+      renderNetwork(); // single render; animation loop handles motion
+    }
+
+    function renderHud() {
+      const s = state.snapshot;
+      if (!s) return;
+
+      el('projectName').textContent = s.project_name || 'ACDP';
+      el('ownerName').textContent = s.owner || '—';
+      el('uptime').textContent = formatUptime(s.uptime_seconds || 0);
+
+      const connected = (s.agents || []).filter(a => a.status === 'connected').length;
+      el('agentCount').textContent = connected;
+      el('lockCount').textContent = (s.locks || []).length;
+      el('pendingCount').textContent = (s.pending_commits || []).length;
+      el('networkMetric').textContent = `${connected} online`;
+      el('streamCount').textContent = state.events.length;
+      el('locksBadge').textContent = (s.locks || []).length;
+    }
+
+    function formatUptime(sec) {
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      const s = sec % 60;
+      return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    }
+
+    function renderStream() {
+      const container = el('stream');
+      // Keep the last 80 events rendered for performance
+      const events = state.events.slice(-80).reverse();
+
+      container.innerHTML = events.map(ev => {
+        const timeStr = new Date(ev.at).toLocaleTimeString('en-GB', { hour12: false });
+        const classification = classifyEvent(ev.type);
+        const message = formatEventMessage(ev);
+        return `
+          <div class="stream-row">
+            <span class="stream-time">${timeStr}</span>
+            <span class="stream-type ${classification.css}">${classification.label}</span>
+            <span class="stream-msg">${message}</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function classifyEvent(type) {
+      switch (type) {
+        case 'lock_acquired': return { css: 'lock', label: 'LOCK' };
+        case 'lock_released': return { css: 'unlock', label: 'FREE' };
+        case 'commit_approved':
+        case 'commit_pending':
+        case 'commit_approval_needed': return { css: 'commit', label: 'COMMIT' };
+        case 'commit_rejected': return { css: 'error', label: 'REJECT' };
+        case 'agent_connected': return { css: 'connect', label: 'JOIN' };
+        case 'agent_disconnected': return { css: 'error', label: 'LEAVE' };
+        case 'files_changed': return { css: 'sync', label: 'SYNC' };
+        case 'error': return { css: 'error', label: 'ERR' };
+        default: return { css: 'sync', label: type.slice(0, 6).toUpperCase() };
+      }
+    }
+
+    function formatEventMessage(ev) {
+      const p = ev.payload || {};
+      const agent = p.agent_id || (p.lock && p.lock.agent_id) || '—';
+      const agentHtml = `<span class="agent">${escape(agent)}</span>`;
+
+      switch (ev.type) {
+        case 'lock_acquired': {
+          const files = (p.lock?.files || []).map(f => `<span class="file">${escape(f)}</span>`).join(' ');
+          return `${agentHtml} → ${files}`;
+        }
+        case 'lock_released': {
+          const files = (p.files || []).map(f => `<span class="file">${escape(f)}</span>`).join(' ');
+          const reason = p.reason ? `<span class="meta">(${escape(p.reason)})</span>` : '';
+          return `${agentHtml} ← ${files} ${reason}`;
+        }
+        case 'agent_connected':
+          return `${agentHtml} from <span class="meta">${escape(p.machine || '—')}</span> <span class="meta">role=${escape(p.role || 'agent')}</span>`;
+        case 'agent_disconnected':
+          return `${agentHtml} <span class="meta">(${escape(p.machine || '—')})</span>`;
+        case 'commit_pending':
+        case 'commit_approval_needed': {
+          const files = (p.files || p.manual_files || []).map(f => `<span class="file">${escape(f)}</span>`).join(' ');
+          return `${agentHtml} requests commit ${files}`;
+        }
+        case 'commit_approved': {
+          const files = (p.files || []).map(f => `<span class="file">${escape(f)}</span>`).join(' ');
+          return `${agentHtml} approved ${files}`;
+        }
+        case 'commit_rejected':
+          return `${agentHtml} <span class="meta">${escape(p.reason || '')}</span>`;
+        case 'files_changed': {
+          const files = (p.files || []).map(f => `<span class="file">${escape(f)}</span>`).join(' ');
+          return `${agentHtml} pushed ${files}`;
+        }
+        default:
+          return `${agentHtml}`;
+      }
+    }
+
+    function renderLocks() {
+      const locks = state.snapshot?.locks || [];
+      const list = el('locksList');
+
+      if (locks.length === 0) {
+        list.innerHTML = '<div class="empty">NO ACTIVE LOCKS</div>';
+        return;
+      }
+
+      const now = Date.now();
+      list.innerHTML = locks.map(lock => {
+        const expiresMs = new Date(lock.expires_at).getTime();
+        const lockedMs = new Date(lock.locked_at).getTime();
+        const totalMs = expiresMs - lockedMs;
+        const remainingMs = Math.max(0, expiresMs - now);
+        const pct = totalMs > 0 ? Math.max(0, Math.min(100, (remainingMs / totalMs) * 100)) : 0;
+        const remaining = formatDuration(remainingMs);
+        const files = lock.files.map(f => `<span class="file-item">${escape(f)}</span>`).join('');
+
+        return `
+          <div class="lock-card">
+            <div class="lock-files">${files}</div>
+            <div class="lock-meta">
+              <span><span class="lock-holder">${escape(lock.agent_id)}</span> · ${escape(lock.machine || '')}</span>
+              <span>${remaining}</span>
+            </div>
+            <div class="lock-ttl-bar"><div class="lock-ttl-fill" style="width:${pct}%"></div></div>
+            ${lock.reason ? `<div style="margin-top:4px;font-size:10px;color:var(--fg-dim)">${escape(lock.reason)}</div>` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderCommits() {
+      const pending = state.snapshot?.pending_commits || [];
+      const section = el('commitsSection');
+      const list = el('commitsList');
+
+      if (pending.length === 0) {
+        section.style.display = 'none';
+        return;
+      }
+
+      section.style.display = 'block';
+      el('commitsBadge').textContent = pending.length;
+
+      list.innerHTML = pending.map(c => {
+        const files = (c.files || []).map(f => `<span class="file">${escape(f)}</span>`).join(' ');
+        return `
+          <div class="commit-card">
+            <div class="commit-summary">${escape(c.summary || '(no summary)')}</div>
+            <div class="commit-meta">
+              by <span class="agent">${escape(c.agent_id)}</span>
+              <span style="margin-left:8px">${files}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function formatDuration(ms) {
+      if (ms <= 0) return 'expired';
+      const totalSec = Math.floor(ms / 1000);
+      const m = Math.floor(totalSec / 60);
+      const s = totalSec % 60;
+      if (m === 0) return `${s}s`;
+      return `${m}m ${String(s).padStart(2,'0')}s`;
+    }
+
+    function escape(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // --- Network graph (canvas, force-directed) ---
+    const canvas = el('networkCanvas');
+    const ctx = canvas.getContext('2d');
+    let width = 0, height = 0, dpr = window.devicePixelRatio || 1;
+
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      width = rect.width;
+      height = rect.height;
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      ctx.scale(dpr, dpr);
+    }
+
+    window.addEventListener('resize', () => {
+      resizeCanvas();
+    });
+
+    // Initial sizing happens after first render tick (canvas has zero size until laid out)
+    requestAnimationFrame(resizeCanvas);
+
+    function renderNetwork() {
+      el('networkEmpty').style.display =
+        (state.snapshot?.agents || []).filter(a => a.status === 'connected').length === 0 ? 'flex' : 'none';
+    }
+
+    // Force-directed simulation loop
+    function simulate() {
+      const agents = (state.snapshot?.agents || []).filter(a => a.status === 'connected');
+      const locks = state.snapshot?.locks || [];
+
+      // Initialize positions for new agents
+      for (const a of agents) {
+        if (!state.agentPositions.has(a.agent_id)) {
+          state.agentPositions.set(a.agent_id, {
+            x: width / 2 + (Math.random() - 0.5) * 100,
+            y: height / 2 + (Math.random() - 0.5) * 100,
+            vx: 0,
+            vy: 0
+          });
+        }
+      }
+
+      // Remove disconnected
+      for (const id of state.agentPositions.keys()) {
+        if (!agents.find(a => a.agent_id === id)) {
+          state.agentPositions.delete(id);
+        }
+      }
+
+      // Forces: repulsion between agents, attraction to center, damping
+      const nodes = agents.map(a => ({ ...a, pos: state.agentPositions.get(a.agent_id) }));
+
+      for (let i = 0; i < nodes.length; i++) {
+        const n = nodes[i].pos;
+        // Center gravity
+        n.vx += ((width / 2) - n.x) * 0.002;
+        n.vy += ((height / 2) - n.y) * 0.002;
+
+        // Repulsion
+        for (let j = 0; j < nodes.length; j++) {
+          if (i === j) continue;
+          const m = nodes[j].pos;
+          const dx = n.x - m.x;
+          const dy = n.y - m.y;
+          const distSq = dx * dx + dy * dy + 0.01;
+          const force = 2500 / distSq;
+          n.vx += (dx / Math.sqrt(distSq)) * force;
+          n.vy += (dy / Math.sqrt(distSq)) * force;
+        }
+
+        // Damping
+        n.vx *= 0.82;
+        n.vy *= 0.82;
+        n.x += n.vx;
+        n.y += n.vy;
+
+        // Bounds
+        const pad = 40;
+        if (n.x < pad) n.x = pad;
+        if (n.x > width - pad) n.x = width - pad;
+        if (n.y < pad) n.y = pad;
+        if (n.y > height - pad) n.y = height - pad;
+      }
+
+      drawNetwork(nodes, locks);
+    }
+
+    function drawNetwork(nodes, locks) {
+      if (width === 0 || height === 0) return;
+      ctx.clearRect(0, 0, width, height);
+
+      // Draw center anchor
+      const cx = width / 2, cy = height / 2;
+      ctx.save();
+      ctx.globalAlpha = 0.15;
+      ctx.strokeStyle = '#22d3ee';
+      ctx.lineWidth = 1;
+      for (const n of nodes) {
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(n.pos.x, n.pos.y);
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // Draw central ACDP hub
+      ctx.save();
+      const hubGradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, 24);
+      hubGradient.addColorStop(0, 'rgba(34, 211, 238, 0.4)');
+      hubGradient.addColorStop(1, 'rgba(34, 211, 238, 0)');
+      ctx.fillStyle = hubGradient;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 24, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = '#22d3ee';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 10, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.shadowColor = '#22d3ee';
+      ctx.shadowBlur = 16;
+      ctx.stroke();
+      ctx.restore();
+
+      // Draw agents
+      const now = Date.now();
+      for (const n of nodes) {
+        const hasLock = locks.some(l => l.agent_id === n.agent_id && new Date(l.expires_at).getTime() > now);
+        const isOwner = n.role === 'owner' || n.role === 'sub_owner';
+
+        const color = isOwner ? '#d946ef' : (hasLock ? '#fbbf24' : '#22d3ee');
+        const glowColor = isOwner ? 'rgba(217, 70, 239, 0.6)' : (hasLock ? 'rgba(251, 191, 36, 0.6)' : 'rgba(34, 211, 238, 0.6)');
+
+        // Pulse ring for agents with locks
+        if (hasLock) {
+          const phase = (now / 800) % 1;
+          ctx.save();
+          ctx.strokeStyle = color;
+          ctx.globalAlpha = 1 - phase;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(n.pos.x, n.pos.y, 14 + phase * 14, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // Outer glow
+        const gradient = ctx.createRadialGradient(n.pos.x, n.pos.y, 0, n.pos.x, n.pos.y, 20);
+        gradient.addColorStop(0, glowColor);
+        gradient.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(n.pos.x, n.pos.y, 20, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Node
+        ctx.save();
+        ctx.fillStyle = color;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 12;
+        ctx.beginPath();
+        ctx.arc(n.pos.x, n.pos.y, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        // Label
+        ctx.save();
+        ctx.fillStyle = '#d6e4ff';
+        ctx.font = '11px "JetBrains Mono", "Fira Code", monospace';
+        ctx.textAlign = 'center';
+        const label = n.agent_id.length > 18 ? n.agent_id.slice(0, 16) + '…' : n.agent_id;
+        ctx.fillText(label, n.pos.x, n.pos.y + 24);
+        ctx.font = '9px "JetBrains Mono", monospace';
+        ctx.fillStyle = '#7b8aaa';
+        ctx.fillText(n.machine || '', n.pos.x, n.pos.y + 36);
+        ctx.restore();
+      }
+    }
+
+    function animationLoop() {
+      simulate();
+      requestAnimationFrame(animationLoop);
+    }
+    requestAnimationFrame(animationLoop);
+
+    // --- HUD uptime tick ---
+    setInterval(() => {
+      if (!state.snapshot) return;
+      state.snapshot.uptime_seconds++;
+      el('uptime').textContent = formatUptime(state.snapshot.uptime_seconds);
+      renderLocks(); // refresh countdown bars
+    }, 1000);
+
+    // --- Toast helper ---
+    function toast(msg, kind = '') {
+      const container = el('toasts');
+      const node = document.createElement('div');
+      node.className = 'toast' + (kind ? ' ' + kind : '');
+      node.textContent = msg;
+      container.appendChild(node);
+      setTimeout(() => node.remove(), 3000);
+    }
+
+    // --- Boot ---
+    const savedToken = loadToken();
+    if (savedToken) {
+      hideAuthModal();
+      connect(savedToken);
+    } else {
+      showAuthModal();
+    }
+  </script>
+</body>
+</html>

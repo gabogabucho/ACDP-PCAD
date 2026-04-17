@@ -316,6 +316,45 @@ Agent Backend:
 
 ---
 
+## Live Dashboard
+
+ACDP ships with a built-in real-time dashboard served on the same port as the WebSocket server. Open it in any browser to watch agents, locks, and commits as they happen.
+
+![ACDP live dashboard](docs/screenshots/dashboard-live.png)
+
+### Open the dashboard
+
+With the server running (auto-started by the MCP server or `npm run start:server`):
+
+```
+http://localhost:3100/dashboard
+```
+
+You'll be prompted for the server token — the same one in `acdp-socket-server/config.json`. The token is saved in `sessionStorage` so you only enter it once per browser session.
+
+### What you see
+
+- **Agent Network** — force-directed graph of connected agents. Owners glow magenta, agents glow cyan, and agents currently holding locks pulse amber.
+- **Activity Stream** — live terminal-style event log. Every lock, release, commit, connection, and disconnection streams in color-coded in real time.
+- **Active Locks** — countdown cards for every active lock with a visual TTL bar, holder ID, machine, and optional reason.
+- **Pending Commits** — inbox-style view of commits awaiting owner approval.
+- **HUD** — uptime, project name, owner, live agent/lock/pending counts, and connection status.
+
+### Endpoints
+
+| Path | Purpose |
+|------|---------|
+| `GET /dashboard` | Serves the dashboard HTML |
+| `GET /api/state?token=...` | JSON snapshot (agents, locks, commits, metrics, uptime) |
+| `GET /api/health` | Liveness check — uptime, connected dashboard clients |
+| `WS /dashboard-ws?token=...` | Live state feed: `{ type: 'init' \| 'update', snapshot, event? }` |
+
+### Remote access
+
+To watch a remote server's dashboard, tunnel the port (or put a TLS reverse proxy in front of it) and open `https://your-domain/dashboard` on your machine. The WebSocket upgrades to `wss://` automatically when the page is served over HTTPS.
+
+---
+
 ## Working with Co-Workers (Multi-Machine Setup)
 
 This is where ACDP shines. Multiple developers, each running their own AI agents, coordinating in real-time.

@@ -1,3 +1,5 @@
+const http = require('http');
+const url = require('url');
 const { WebSocketServer } = require('ws');
 const fs = require('fs');
 const path = require('path');
@@ -7,6 +9,7 @@ const Auth = require('./auth');
 const ApprovalEngine = require('./approval-engine');
 const Logger = require('./logger');
 const Handlers = require('./handlers');
+const Dashboard = require('./dashboard');
 const { loadGovernance } = require('./bootstrap');
 
 const configPath = process.env.ACDP_CONFIG || path.join(__dirname, 'config.json');
@@ -17,6 +20,8 @@ const state = new State({ defaultTtlMinutes: config.default_ttl_minutes });
 const auth = new Auth(config, governance);
 const logger = new Logger();
 const approvalEngine = new ApprovalEngine(config, state, logger);
+const startedAt = new Date();
+const dashboard = new Dashboard({ state, auth, governance, startedAt });
 
 // Client registry: agentId → { ws, machine, agentId, role }
 const clients = new Map();
@@ -27,6 +32,10 @@ function broadcast(data) {
     if (client.ws.readyState === 1) {
       client.ws.send(msg);
     }
+  }
+  // Mirror all broadcasts to the dashboard for real-time state visualization
+  if (data && data.event) {
+    dashboard.recordEvent(data.event, data);
   }
 }
 
@@ -39,7 +48,31 @@ function sendTo(agentId, data) {
 
 const handlers = new Handlers(state, auth, approvalEngine, logger, broadcast, sendTo);
 
-const wss = new WebSocketServer({ port: config.port });
+// --- HTTP server (serves dashboard + /api/state) ---
+const httpServer = http.createServer((req, res) => {
+  if (dashboard.handleHttp(req, res)) return;
+
+  res.writeHead(404, { 'Content-Type': 'text/plain' });
+  res.end('Not found');
+});
+
+// --- WebSocket server for agents ---
+const wss = new WebSocketServer({ noServer: true });
+
+// --- Upgrade routing: agents → /, dashboard → /dashboard-ws ---
+httpServer.on('upgrade', (req, socket, head) => {
+  const { pathname } = url.parse(req.url);
+
+  if (pathname === '/dashboard-ws') {
+    dashboard.handleUpgrade(req, socket, head);
+    return;
+  }
+
+  // Default: agent protocol (preserves backward compatibility with existing clients)
+  wss.handleUpgrade(req, socket, head, (ws) => {
+    wss.emit('connection', ws, req);
+  });
+});
 
 wss.on('connection', (ws, req) => {
   let clientInfo = null;
@@ -148,19 +181,25 @@ setInterval(() => {
   }
 }, 30_000);
 
-console.log(`[ACDP] Socket server listening on ws://0.0.0.0:${config.port}`);
-const ownerName = governance.project?.owner || os.hostname();
-const subOwnerName = governance.project?.sub_owner;
-console.log(`[ACDP] Owner: ${ownerName}${subOwnerName ? `, Sub-owner: ${subOwnerName}` : ''}`);
-if (config.manual_approval_paths.length > 0) {
-  console.log(`[ACDP] Manual approval paths: ${config.manual_approval_paths.join(', ')}`);
-}
+// Start listening on the configured port
+httpServer.listen(config.port, () => {
+  const ownerName = governance.project?.owner || os.hostname();
+  const subOwnerName = governance.project?.sub_owner;
+  console.log(`[ACDP] Socket server listening on ws://0.0.0.0:${config.port}`);
+  console.log(`[ACDP] Dashboard available at http://localhost:${config.port}/dashboard`);
+  console.log(`[ACDP] Owner: ${ownerName}${subOwnerName ? `, Sub-owner: ${subOwnerName}` : ''}`);
+  if (config.manual_approval_paths && config.manual_approval_paths.length > 0) {
+    console.log(`[ACDP] Manual approval paths: ${config.manual_approval_paths.join(', ')}`);
+  }
+});
 
 // Graceful shutdown
 process.on('SIGINT', () => {
   console.log('\n[ACDP] Shutting down...');
   approvalEngine.stop();
-  wss.close(() => {
+  dashboard.close();
+  wss.close();
+  httpServer.close(() => {
     console.log('[ACDP] Server closed.');
     process.exit(0);
   });
