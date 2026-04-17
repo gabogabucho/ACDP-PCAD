@@ -4,7 +4,7 @@
  */
 const path = require('path');
 const fs = require('fs');
-const { ensureServer, tryConnect } = require('./acdp-socket-server/bootstrap');
+const { ensureServer, tryConnect, PID_PATH } = require('./acdp-socket-server/bootstrap');
 const AcdpSocketClient = require('./acdp-socket-client');
 const AcdpCommands = require('./acdp-socket-client/commands');
 
@@ -70,6 +70,9 @@ async function run() {
   }
   // Wait a beat for the process to die
   await new Promise(r => setTimeout(r, 500));
+  // Explicit PID file cleanup — SIGKILL on Windows may not run the shutdown
+  // handler that normally unlinks .server.pid.
+  try { fs.unlinkSync(PID_PATH); } catch {}
 
   // Restore original config
   if (configBackup) {
