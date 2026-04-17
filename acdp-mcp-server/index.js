@@ -3,16 +3,26 @@ const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
 const AcdpSocketClient = require('../acdp-socket-client/index');
 const AcdpCommands = require('../acdp-socket-client/commands');
-const { ensureServer } = require('../acdp-socket-server/bootstrap');
+const { ensureServer, loadMachineId, assertLoopback } = require('../acdp-socket-server/bootstrap');
 const { registerTools } = require('./tools');
 const { registerPrompts } = require('./prompts');
 
+// Identity split:
+//   AGENT_ID  — ephemeral per MCP process (includes pid so each Claude session is
+//               a distinct agent in locks/commits history).
+//   MACHINE   — STABLE across restarts/network changes via .machine-id. Used for
+//               role resolution against governance.owner — matches ACDP_OWNER env.
 const AGENT_ID = process.env.ACDP_AGENT_ID || `agent-${require('os').hostname()}-${process.pid}`;
-const MACHINE = process.env.ACDP_MACHINE || require('os').hostname();
+const MACHINE = process.env.ACDP_MACHINE || loadMachineId();
 
 // Optional overrides — if not provided, bootstrap auto-detects/starts the server
 const SOCKET_URL_OVERRIDE = process.env.ACDP_SOCKET_URL || null;
 const TOKEN_OVERRIDE = process.env.ACDP_TOKEN || null;
+
+// Guard against accidentally connecting to a non-loopback URL (Fix B)
+if (SOCKET_URL_OVERRIDE) {
+  assertLoopback(SOCKET_URL_OVERRIDE);
+}
 
 // Shared state — tools access these via the context object
 const context = {

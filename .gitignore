@@ -2,3 +2,5 @@ acdp/log-exports/
 node_modules/
 acdp-socket-server/acdp-socket-events.log
 acdp-socket-server/config.json
+acdp-socket-server/.server.pid
+acdp-socket-server/.machine-id

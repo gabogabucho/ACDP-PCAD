@@ -193,9 +193,12 @@ httpServer.listen(config.port, () => {
   }
 });
 
-// Graceful shutdown
-process.on('SIGINT', () => {
-  console.log('\n[ACDP] Shutting down...');
+// Graceful shutdown — clears pidfile if spawned by bootstrap
+function shutdown(signal) {
+  console.log(`\n[ACDP] Received ${signal}. Shutting down...`);
+  if (process.env.ACDP_PID_FILE) {
+    try { fs.unlinkSync(process.env.ACDP_PID_FILE); } catch {}
+  }
   approvalEngine.stop();
   dashboard.close();
   wss.close();
@@ -203,4 +206,6 @@ process.on('SIGINT', () => {
     console.log('[ACDP] Server closed.');
     process.exit(0);
   });
-});
+}
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
